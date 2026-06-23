@@ -8,7 +8,6 @@ import AuthScreen from "./screens/Auth/AuthScreen";
 import ProfileScreen from "./screens/Profile/ProfileScreen";
 import SearchScreen from "./screens/Search/SearchScreen";
 import InstructionDetailScreen from "./screens/Instructions/InstructionDetailScreen";
-import ComingSoon from "./components/ComingSoon";
 import CommunityScreen from "./screens/Community/CommunityScreen";
 import BusinessDetailScreen from "./screens/Detail/BusinessDetailScreen";
 import UploadFlowScreen from "./screens/Upload/UploadFlowScreen";
