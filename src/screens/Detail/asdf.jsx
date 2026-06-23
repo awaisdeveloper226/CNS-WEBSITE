@@ -14,7 +14,7 @@ import {
 import { API_ENDPOINTS } from "../../constants/network";
 import "./EntryPinWidget.css";
 
-const GOOGLE_MAPS_JS_API_KEY = "AIzaSyBpjSKI7Dvnqfp1C0Z_F6gvTxfh6w8CyZk";
+const GOOGLE_MAPS_JS_API_KEY = process.env.GOOGLE_MAPS_JS_API_KEY;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Load Google Maps JS API once
