@@ -9,7 +9,7 @@ import { useAuthContext } from "../../context/AuthContext";
 import EntryPinWidget from "./asdf";
 import "./BusinessDetailScreen.css";
 
-const GOOGLE_MAPS_EMBED_API_KEY = process.env.GOOGLE_MAPS_EMBED_API_KEY;
+const GOOGLE_MAPS_EMBED_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_EMBED_API_KEY;
 
 const isGlobalBusiness = (b) => !!b.placeId && !b._id && !b.id;
 

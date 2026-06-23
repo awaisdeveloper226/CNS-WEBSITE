@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Zap } from "lucide-react";
 import { API_ENDPOINTS } from "../../constants/network";
-
+import "./CommunityScreen.css";
 
 const CACHE_KEY = "community_leaderboard";
 const CACHE_TTL = 0.25 * 60 * 1000; // 15 seconds
