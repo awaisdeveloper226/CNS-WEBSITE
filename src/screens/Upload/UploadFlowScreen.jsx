@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "./UploadFlowScreen.css";
 
 // ─────────────────────────────────────────────
@@ -45,14 +45,8 @@ const useDebounce = (value, delay) => {
   return debounced;
 };
 
-const isUnregisteredBusiness = (b) => {
-  if (!b) return false;
-  const hasPlaceId = !!b.placeId;
-  const hasLocalId = !!(b.id || b._id);
-  return hasPlaceId && !hasLocalId;
-};
 
-const getBusinessId = (b) => b?.id || b?._id || null;
+
 
 const fmtDuration = (secs) => {
   const m = Math.floor(secs / 60).toString().padStart(2, "0");

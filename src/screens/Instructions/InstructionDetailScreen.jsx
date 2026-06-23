@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   ArrowLeft, Package, UtensilsCrossed, User, Video as VideoIcon,
   X, Play, Pause, Volume2, Send, MessageCircle, Edit2, Save,
-  Camera, Mic, Lock, Trash2,
+  Camera, Mic, Trash2,
 } from "lucide-react";
 import { useAuthContext } from "../../context/AuthContext";
 import { API_ENDPOINTS } from "../../constants/network";
