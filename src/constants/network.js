@@ -26,6 +26,7 @@ export const API_ENDPOINTS = {
   SHARE_CREATE: `${API_BASE_URL}/share`,
   SHARE_RESOLVE: (token) => `${API_BASE_URL}/share/${token}`,
   SHARE_CLAIM: (token) => `${API_BASE_URL}/share/${token}/claim`,
+  SHARE_GUEST_LOGIN: (token) => `${API_BASE_URL}/share/${token}/guest-login`,
 
   // Community
   COMMUNITY_LEADERBOARD: `${API_BASE_URL}/community/leaderboard`,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
-import { API_ENDPOINTS } from "./constants/network";
+import { API_ENDPOINTS, AUTH_TOKEN_KEY } from "./constants/network";
 
 import NavBar from "./components/Navbar/Navbar";
 import HomeScreen from "./screens/Home/HomeScreen";
@@ -30,6 +30,16 @@ function CenteredMessage({ children }) {
   );
 }
 
+function Spinner() {
+  return (
+    <div style={{
+      width: 36, height: 36, borderRadius: "50%",
+      border: "3px solid #e5e7eb", borderTopColor: "#2563eb",
+      animation: "spin 0.8s linear infinite",
+    }} />
+  );
+}
+
 function clearShareHash() {
   window.history.replaceState(null, "", window.location.pathname + window.location.search);
 }
@@ -49,7 +59,9 @@ function AppInner() {
   // status: 'idle' | 'loading' | 'ready' | 'error'
   const [shareStatus, setShareStatus] = useState("idle");
   const [shareBusiness, setShareBusinessState] = useState(null);
+  const [shareToken, setShareToken] = useState(null);
   const [shareError, setShareError] = useState(null);
+  const guestLoginAttempted = useRef(false);
 
   // 1) On first load, detect a #/share/:token hash — try to hand off to the
   //    installed app, then fall back to fetching a public preview here.
@@ -57,13 +69,18 @@ function AppInner() {
     const match = window.location.hash.match(/^#\/share\/([^/?]+)/);
     if (!match) return;
     const token = match[1];
-
+    setShareToken(token);
     setShareStatus("loading");
 
-    // If the app is installed and its custom scheme is registered (only true
-    // for real builds, not Expo Go), this hands off immediately and the
-    // fallback below never matters.
-    window.location.href = `cns://share/${token}`;
+    // Only attempt the app hand-off once per token per browser session — if
+    // we already tried (e.g. this is the reload right after guest sign-in),
+    // skip straight to fetching the preview with no artificial delay.
+    const attemptedKey = "cns_share_deeplink_attempted";
+    const alreadyAttempted = sessionStorage.getItem(attemptedKey) === token;
+    if (!alreadyAttempted) {
+      sessionStorage.setItem(attemptedKey, token);
+      window.location.href = `cns://share/${token}`;
+    }
 
     const timer = setTimeout(async () => {
       try {
@@ -83,15 +100,14 @@ function AppInner() {
         setShareError("Something went wrong loading this link.");
         setShareStatus("error");
       }
-    }, 1500);
+    }, alreadyAttempted ? 0 : 1500);
 
     return () => clearTimeout(timer);
   }, []);
 
-  // 2) Once we know the auth state, if the visitor is actually logged in,
-  //    fold the shared business into the normal authenticated flow instead
-  //    of showing the separate guest-preview screen — gives them full
-  //    functionality (add instructions, entry pin, etc.) right away.
+  // 2) If the visitor is already logged in (real account), fold the shared
+  //    business straight into the normal flow — full functionality, no
+  //    guest account needed.
   useEffect(() => {
     if (isLoading) return;
     if (user && shareStatus === "ready" && shareBusiness) {
@@ -101,6 +117,32 @@ function AppInner() {
       clearShareHash();
     }
   }, [isLoading, user, shareStatus, shareBusiness]);
+
+  // 3) If the visitor is NOT logged in, silently sign them in as a guest
+  //    scoped to this specific link (view/edit/upload all just work
+  //    afterward, since every screen only checks for a valid token). A full
+  //    reload is used so the existing auth hook re-initializes from the
+  //    freshly-stored token without needing to know its internals.
+  useEffect(() => {
+    if (isLoading) return;
+    if (user) return; // handled by effect #2 above
+    if (shareStatus !== "ready" || !shareBusiness || !shareToken) return;
+    if (guestLoginAttempted.current) return;
+    guestLoginAttempted.current = true;
+
+    (async () => {
+      try {
+        const res = await fetch(API_ENDPOINTS.SHARE_GUEST_LOGIN(shareToken), { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Could not open this link.");
+        localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+        window.location.reload();
+      } catch (err) {
+        setShareError(err.message || "Could not open this link.");
+        setShareStatus("error");
+      }
+    })();
+  }, [isLoading, user, shareStatus, shareBusiness, shareToken]);
 
   // ── Load cached businesses from localStorage on start ──
   useEffect(() => {
@@ -166,15 +208,13 @@ function AppInner() {
   };
 
   // ── Share-link loading / error states — take priority over everything ─────
-  if (shareStatus === "loading") {
+  if (shareStatus === "loading" || (shareStatus === "ready" && !user && !isLoading)) {
     return (
       <CenteredMessage>
-        <div style={{
-          width: 36, height: 36, borderRadius: "50%",
-          border: "3px solid #e5e7eb", borderTopColor: "#2563eb",
-          animation: "spin 0.8s linear infinite",
-        }} />
-        <p style={{ color: "#6b7280", margin: 0 }}>Opening business…</p>
+        <Spinner />
+        <p style={{ color: "#6b7280", margin: 0 }}>
+          {shareStatus === "loading" ? "Opening business…" : "Setting things up…"}
+        </p>
       </CenteredMessage>
     );
   }
@@ -200,32 +240,13 @@ function AppInner() {
   if (isLoading) {
     return (
       <CenteredMessage>
-        <div style={{
-          width: 36, height: 36, borderRadius: "50%",
-          border: "3px solid #e5e7eb", borderTopColor: "#2563eb",
-          animation: "spin 0.8s linear infinite",
-        }} />
+        <Spinner />
         <p style={{ color: "#6b7280", margin: 0 }}>Loading…</p>
       </CenteredMessage>
     );
   }
 
-  // ── Guest share preview — bypasses the login wall on purpose ──────────────
-  // Reached only when shareStatus === "ready" AND the visitor isn't logged
-  // in (logged-in visitors were already folded into selectedBusiness above).
-  if (shareStatus === "ready" && shareBusiness && !user) {
-    return (
-      <BusinessDetailScreen
-        business={shareBusiness}
-        onBack={() => { setShareStatus("idle"); setShareBusinessState(null); clearShareHash(); }}
-        onAddInstructions={() => alert("Please log in to add delivery instructions.")}
-        onViewInstruction={() => alert("Please log in to view instruction details.")}
-        onViewComments={() => {}}
-      />
-    );
-  }
-
-  // ── Not logged in ──────────────────────────────────────────────────────────
+  // ── Not logged in (and no share link in play) ──────────────────────────────
   if (!user) return <AuthScreen />;
 
   // ── Pick the active screen ─────────────────────────────────────────────────
