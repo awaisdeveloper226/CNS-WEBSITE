@@ -26,7 +26,7 @@ async function shareBusiness({ token, businessId, placeId, name, address, type, 
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || "Could not create share link");
 
-  const shareUrl = `https://cns-website-eight.vercel.app/#/share/${data.token}`;
+  const shareUrl = `https://cnsroute.com/#/share/${data.token}`;
   if (navigator.share) {
     await navigator.share({ title: name, url: shareUrl });
   } else {
