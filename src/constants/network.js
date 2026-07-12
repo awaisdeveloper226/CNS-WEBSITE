@@ -22,6 +22,11 @@ export const API_ENDPOINTS = {
   SEARCH_HISTORY_POST: `${API_BASE_URL}/users/search-history`,
   NEARBY_BUSINESSES: `${API_BASE_URL}/businesses/nearby`,
 
+
+  SHARE_CREATE: `${API_BASE_URL}/share`,
+  SHARE_RESOLVE: (token) => `${API_BASE_URL}/share/${token}`,
+  SHARE_CLAIM: (token) => `${API_BASE_URL}/share/${token}/claim`,
+
   // Community
   COMMUNITY_LEADERBOARD: `${API_BASE_URL}/community/leaderboard`,
 

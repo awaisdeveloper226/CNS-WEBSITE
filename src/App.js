@@ -47,6 +47,32 @@ function AppInner() {
     setSelectedInstruction(null);
   }, [user]);
 
+
+  useEffect(() => {
+  const match = window.location.hash.match(/^#\/share\/([^/?]+)/);
+  if (!match) return;
+  const token = match[1];
+  const openedAt = Date.now();
+
+  // If the app is installed, this hands off immediately and the code below never matters.
+  window.location.href = `cns://share/${token}`;
+
+  const timer = setTimeout(async () => {
+    if (Date.now() - openedAt < 1400) return; // tab was likely backgrounded, not a real "no app" case
+    try {
+      const res = await fetch(API_ENDPOINTS.SHARE_RESOLVE(token));
+      const data = await res.json();
+      if (!res.ok || !data.valid) { alert(data.message || "This link has expired."); return; }
+      const business = data.businessId
+        ? { _id: data.businessId, id: data.businessId, ...data.business }
+        : { placeId: data.placeId, ...data.business };
+      setSelectedBusiness(business);
+    } catch (_) {}
+  }, 1500);
+
+  return () => clearTimeout(timer);
+}, []);
+
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleNavigate       = (business) => setSelectedBusiness(business);
   const handleSearchPress    = () => setTab("search");

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   ArrowLeft, MapPin, Building, CheckCircle, Package, UtensilsCrossed,
   User, ThumbsUp, ThumbsDown, Plus, ClipboardList, Navigation, X,
-  Mic, ShieldCheck, Truck,
+  Mic, ShieldCheck, Share2, Truck,
 } from "lucide-react";
 import { API_ENDPOINTS } from "../../constants/network";
 import { useAuthContext } from "../../context/AuthContext";
@@ -12,6 +12,28 @@ import "./BusinessDetailScreen.css";
 const GOOGLE_MAPS_EMBED_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_EMBED_API_KEY;
 
 const isGlobalBusiness = (b) => !!b.placeId && !b._id && !b.id;
+
+/* -------------------------------------------------------------------------- */
+/* SHARE HELPER                                                                */
+/* -------------------------------------------------------------------------- */
+
+async function shareBusiness({ token, businessId, placeId, name, address, type, coordinates }) {
+  const res = await fetch(API_ENDPOINTS.SHARE_CREATE, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ businessId, placeId, name, address, type, coordinates }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || "Could not create share link");
+
+  const shareUrl = `https://cns-website-eight.vercel.app/#/share/${data.token}`;
+  if (navigator.share) {
+    await navigator.share({ title: name, url: shareUrl });
+  } else {
+    await navigator.clipboard.writeText(shareUrl);
+    alert("Link copied to clipboard!");
+  }
+}
 
 /* -------------------------------------------------------------------------- */
 /* SOURCE BADGE                                                                */
@@ -110,7 +132,7 @@ const MapModal = ({ visible, address, businessName, onClose }) => {
 const GlobalBusinessScreen = ({
   business, onBack, onAddInstructions, onViewInstruction, onViewComments, onGlobalClaimed,
 }) => {
-  const { user } = useAuthContext();
+  const { user, token } = useAuthContext();
   const [showMap, setShowMap] = useState(false);
   const [claimedLocalId, setClaimedLocalId] = useState(null);
 
@@ -142,6 +164,21 @@ const GlobalBusinessScreen = ({
         ? { lat: business.lat, lng: business.lng }
         : null;
 
+  const handleShare = async () => {
+    try {
+      await shareBusiness({
+        token,
+        placeId,
+        name: business.name,
+        address: business.address,
+        type: businessType,
+        coordinates: resolvedCoords,
+      });
+    } catch (err) {
+      if (err.name !== "AbortError") alert(err.message || "Couldn't share this business.");
+    }
+  };
+
   return (
     <div className="bds-screen">
       <MapModal visible={showMap} address={business.address} businessName={business.name} onClose={() => setShowMap(false)} />
@@ -150,7 +187,7 @@ const GlobalBusinessScreen = ({
         <div className="bds-header">
           <button className="bds-back-button" onClick={onBack} aria-label="Go back"><ArrowLeft size={22} /></button>
           <h1 className="bds-header-title">{business.name}</h1>
-          <div className="bds-header-spacer" />
+          <button className="bds-back-button" onClick={handleShare} aria-label="Share"><Share2 size={22} /></button>
         </div>
       </div>
 
@@ -393,6 +430,22 @@ function BusinessDetailContent({
     } catch (err) { console.error("Vote failed:", err.message); }
   }, [token, user]);
 
+  const handleShare = async () => {
+    if (!detailedBusiness) return;
+    try {
+      await shareBusiness({
+        token,
+        businessId,
+        name: detailedBusiness.name,
+        address: detailedBusiness.address,
+        type: detailedBusiness.type,
+        coordinates: detailedBusiness.coordinates,
+      });
+    } catch (err) {
+      if (err.name !== "AbortError") alert(err.message || "Couldn't share this business.");
+    }
+  };
+
   if (loading && !detailedBusiness) {
     return (
       <div className="bds-centered-fill">
@@ -423,7 +476,7 @@ function BusinessDetailContent({
         <div className="bds-header">
           <button className="bds-back-button" onClick={onBack} aria-label="Go back"><ArrowLeft size={22} /></button>
           <h1 className="bds-header-title">{detailedBusiness.name}</h1>
-          <div className="bds-header-spacer" />
+          <button className="bds-back-button" onClick={handleShare} aria-label="Share"><Share2 size={22} /></button>
         </div>
       </div>
 
