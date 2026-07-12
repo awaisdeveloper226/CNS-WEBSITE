@@ -16,6 +16,24 @@ import UploadFlowScreen from "./screens/Upload/UploadFlowScreen";
 // Warm up the backend
 fetch(`${API_ENDPOINTS.BUSINESSES}?skip=0&limit=1`).catch(() => {});
 
+// ── Simple full-screen loading/error UI shared by the share-link flow ────────
+function CenteredMessage({ children }) {
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      minHeight: "100vh", backgroundColor: "#f9fafb", gap: 12, padding: 24, textAlign: "center",
+    }}>
+      {children}
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+function clearShareHash() {
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
+}
+
 // ── Inner app — needs AuthContext ─────────────────────────────────────────────
 function AppInner() {
   const { user, isLoading } = useAuthContext();
@@ -26,6 +44,63 @@ function AppInner() {
   const [showUploadFlow, setShowUploadFlow]     = useState(false);
   const [selectedInstruction, setSelectedInstruction] = useState(null); // { instructionId, businessId }
   const homeScrollOffsetRef = useRef(0);
+
+  // ── Share-link state ─────────────────────────────────────────────────────
+  // status: 'idle' | 'loading' | 'ready' | 'error'
+  const [shareStatus, setShareStatus] = useState("idle");
+  const [shareBusiness, setShareBusinessState] = useState(null);
+  const [shareError, setShareError] = useState(null);
+
+  // 1) On first load, detect a #/share/:token hash — try to hand off to the
+  //    installed app, then fall back to fetching a public preview here.
+  useEffect(() => {
+    const match = window.location.hash.match(/^#\/share\/([^/?]+)/);
+    if (!match) return;
+    const token = match[1];
+
+    setShareStatus("loading");
+
+    // If the app is installed and its custom scheme is registered (only true
+    // for real builds, not Expo Go), this hands off immediately and the
+    // fallback below never matters.
+    window.location.href = `cns://share/${token}`;
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(API_ENDPOINTS.SHARE_RESOLVE(token));
+        const data = await res.json();
+        if (!res.ok || !data.valid) {
+          setShareError(data.message || "This link has expired.");
+          setShareStatus("error");
+          return;
+        }
+        const business = data.businessId
+          ? { _id: data.businessId, id: data.businessId, ...data.business }
+          : { placeId: data.placeId, ...data.business };
+        setShareBusinessState(business);
+        setShareStatus("ready");
+      } catch (_) {
+        setShareError("Something went wrong loading this link.");
+        setShareStatus("error");
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 2) Once we know the auth state, if the visitor is actually logged in,
+  //    fold the shared business into the normal authenticated flow instead
+  //    of showing the separate guest-preview screen — gives them full
+  //    functionality (add instructions, entry pin, etc.) right away.
+  useEffect(() => {
+    if (isLoading) return;
+    if (user && shareStatus === "ready" && shareBusiness) {
+      setSelectedBusiness(shareBusiness);
+      setShareStatus("idle");
+      setShareBusinessState(null);
+      clearShareHash();
+    }
+  }, [isLoading, user, shareStatus, shareBusiness]);
 
   // ── Load cached businesses from localStorage on start ──
   useEffect(() => {
@@ -46,32 +121,6 @@ function AppInner() {
     setShowUploadFlow(false);
     setSelectedInstruction(null);
   }, [user]);
-
-
-  useEffect(() => {
-  const match = window.location.hash.match(/^#\/share\/([^/?]+)/);
-  if (!match) return;
-  const token = match[1];
-  const openedAt = Date.now();
-
-  // If the app is installed, this hands off immediately and the code below never matters.
-  window.location.href = `cns://share/${token}`;
-
-  const timer = setTimeout(async () => {
-    if (Date.now() - openedAt < 1400) return; // tab was likely backgrounded, not a real "no app" case
-    try {
-      const res = await fetch(API_ENDPOINTS.SHARE_RESOLVE(token));
-      const data = await res.json();
-      if (!res.ok || !data.valid) { alert(data.message || "This link has expired."); return; }
-      const business = data.businessId
-        ? { _id: data.businessId, id: data.businessId, ...data.business }
-        : { placeId: data.placeId, ...data.business };
-      setSelectedBusiness(business);
-    } catch (_) {}
-  }, 1500);
-
-  return () => clearTimeout(timer);
-}, []);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleNavigate       = (business) => setSelectedBusiness(business);
@@ -116,22 +165,63 @@ function AppInner() {
     console.log("View comments:", instructionId);
   };
 
-  // ── Loading splash ─────────────────────────────────────────────────────────
+  // ── Share-link loading / error states — take priority over everything ─────
+  if (shareStatus === "loading") {
+    return (
+      <CenteredMessage>
+        <div style={{
+          width: 36, height: 36, borderRadius: "50%",
+          border: "3px solid #e5e7eb", borderTopColor: "#2563eb",
+          animation: "spin 0.8s linear infinite",
+        }} />
+        <p style={{ color: "#6b7280", margin: 0 }}>Opening business…</p>
+      </CenteredMessage>
+    );
+  }
+
+  if (shareStatus === "error") {
+    return (
+      <CenteredMessage>
+        <p style={{ color: "#b91c1c", margin: 0, fontWeight: 600 }}>{shareError}</p>
+        <button
+          onClick={() => { setShareStatus("idle"); clearShareHash(); }}
+          style={{
+            marginTop: 8, padding: "10px 24px", backgroundColor: "#2563eb",
+            color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer",
+          }}
+        >
+          Go to CNS
+        </button>
+      </CenteredMessage>
+    );
+  }
+
+  // ── Loading splash (auth) ──────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <div style={{
-        display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        minHeight: "100vh", backgroundColor: "#f9fafb", gap: 12,
-      }}>
+      <CenteredMessage>
         <div style={{
           width: 36, height: 36, borderRadius: "50%",
           border: "3px solid #e5e7eb", borderTopColor: "#2563eb",
           animation: "spin 0.8s linear infinite",
         }} />
         <p style={{ color: "#6b7280", margin: 0 }}>Loading…</p>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
+      </CenteredMessage>
+    );
+  }
+
+  // ── Guest share preview — bypasses the login wall on purpose ──────────────
+  // Reached only when shareStatus === "ready" AND the visitor isn't logged
+  // in (logged-in visitors were already folded into selectedBusiness above).
+  if (shareStatus === "ready" && shareBusiness && !user) {
+    return (
+      <BusinessDetailScreen
+        business={shareBusiness}
+        onBack={() => { setShareStatus("idle"); setShareBusinessState(null); clearShareHash(); }}
+        onAddInstructions={() => alert("Please log in to add delivery instructions.")}
+        onViewInstruction={() => alert("Please log in to view instruction details.")}
+        onViewComments={() => {}}
+      />
     );
   }
 
