@@ -179,8 +179,6 @@ function AppInner() {
   //     selectedBusiness right back out. Setting shareStatus to "done"
   //     (instead of "idle") plus gating the reset on user-id change instead
   //     of on shareStatus removes that loop entirely.
-<<<<<<< HEAD
-=======
   useEffect(() => {
     if (isLoading) return;
     if (!(user && shareStatus === "ready" && shareBusiness)) return;
@@ -204,48 +202,8 @@ function AppInner() {
   //     so it no longer re-fires as a side effect of 2a completing. Still
   //     skips the reset while a share flow is actively resolving, so it
   //     doesn't stomp on a business that's about to be folded in.
->>>>>>> 0648c1ef5ac2380e18950f2973dc954431ebb271
   useEffect(() => {
     if (isLoading) return;
-    if (!(user && shareStatus === "ready" && shareBusiness)) return;
-
-<<<<<<< HEAD
-    setSelectedBusiness(shareBusiness);
-    setShareStatus("done");
-    setShareBusinessState(null);
-    // Real users have the whole site to fall back on, so it's safe (and
-    // nicer) to clean up the URL/session once they're folded in. Guests
-    // have nothing else to fall back on — keeping the hash + pending
-    // token alive is what lets a refresh recover the same business
-    // instead of dead-ending on "session ended".
-    if (!user.isGuest) {
-      clearShareHash();
-      clearShareSessionKeys();
-    }
-  }, [user, isLoading, shareStatus, shareBusiness]);
-=======
-    const currentUserId = user?._id ?? null;
-    if (prevUserIdRef.current === currentUserId) return;
-    prevUserIdRef.current = currentUserId;
-
-    if (shareStatus === "loading" || shareStatus === "ready") return;
-
-    setTab("home");
-    setSelectedBusiness(null);
-    setShowUploadFlow(false);
-    setSelectedInstruction(null);
-    setGuestShowExit(false);
-  }, [user, isLoading, shareStatus]);
->>>>>>> 0648c1ef5ac2380e18950f2973dc954431ebb271
-
-  // 2b) Normal reset on an actual login/logout/user-switch. Gated on
-  //     user?._id changing (via prevUserIdRef) rather than on shareStatus,
-  //     so it no longer re-fires as a side effect of 2a completing. Still
-  //     skips the reset while a share flow is actively resolving, so it
-  //     doesn't stomp on a business that's about to be folded in.
-  useEffect(() => {
-    if (isLoading) return;
-<<<<<<< HEAD
 
     const currentUserId = user?._id ?? null;
     if (prevUserIdRef.current === currentUserId) return;
@@ -270,8 +228,6 @@ function AppInner() {
   //    render and folds shareBusiness straight into selectedBusiness.
   useEffect(() => {
     if (isLoading) return;
-=======
->>>>>>> 0648c1ef5ac2380e18950f2973dc954431ebb271
     if (user) return; // handled by effect #2a above
     if (shareStatus !== "ready" || !shareBusiness || !shareToken) return;
     if (guestLoginAttempted.current) return;
