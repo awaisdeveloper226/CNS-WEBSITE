@@ -16,6 +16,19 @@ import UploadFlowScreen from "./screens/Upload/UploadFlowScreen";
 // Warm up the backend
 fetch(`${API_ENDPOINTS.BUSINESSES}?skip=0&limit=1`).catch(() => {});
 
+// ── Share-flow sessionStorage keys ────────────────────────────────────────────
+// Kept separate from the URL hash on purpose: the hash is the primary source,
+// but if anything clears/loses it (a redirect, a reload, another part of the
+// app touching window.location), these let the flow recover instead of
+// silently dead-ending on "session ended".
+const SHARE_PENDING_TOKEN_KEY = "cns_share_pending_token";
+const SHARE_DEEPLINK_ATTEMPTED_KEY = "cns_share_deeplink_attempted";
+
+function clearShareSessionKeys() {
+  sessionStorage.removeItem(SHARE_PENDING_TOKEN_KEY);
+  sessionStorage.removeItem(SHARE_DEEPLINK_ATTEMPTED_KEY);
+}
+
 // ── Simple full-screen loading/message UI shared by the share-link flow ──────
 function CenteredMessage({ children }) {
   return (
@@ -46,6 +59,7 @@ function clearShareHash() {
 
 function exitGuestSession() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
+  clearShareSessionKeys();
   window.location.reload();
 }
 
@@ -101,20 +115,25 @@ function AppInner() {
 
   // 1) On first load, detect a #/share/:token hash — try to hand off to the
   //    installed app, then fall back to fetching a public preview here.
+  //    Falls back to a sessionStorage-remembered token if the hash itself
+  //    is missing (e.g. after the guest-login reload), so the flow can
+  //    recover instead of dead-ending.
   useEffect(() => {
-    const match = window.location.hash.match(/^#\/share\/([^/?]+)/);
-    if (!match) return;
-    const token = match[1];
+    const hashMatch = window.location.hash.match(/^#\/share\/([^/?]+)/);
+    const pendingToken = sessionStorage.getItem(SHARE_PENDING_TOKEN_KEY);
+    const token = hashMatch ? hashMatch[1] : pendingToken;
+    if (!token) return;
+
+    sessionStorage.setItem(SHARE_PENDING_TOKEN_KEY, token);
     setShareToken(token);
     setShareStatus("loading");
 
     // Only attempt the app hand-off once per token per browser session — if
     // we already tried (e.g. this is the reload right after guest sign-in),
     // skip straight to fetching the preview with no artificial delay.
-    const attemptedKey = "cns_share_deeplink_attempted";
-    const alreadyAttempted = sessionStorage.getItem(attemptedKey) === token;
+    const alreadyAttempted = sessionStorage.getItem(SHARE_DEEPLINK_ATTEMPTED_KEY) === token;
     if (!alreadyAttempted) {
-      sessionStorage.setItem(attemptedKey, token);
+      sessionStorage.setItem(SHARE_DEEPLINK_ATTEMPTED_KEY, token);
       window.location.href = `cns://share/${token}`;
     }
 
@@ -125,6 +144,7 @@ function AppInner() {
         if (!res.ok || !data.valid) {
           setShareError(data.message || "This link has expired.");
           setShareStatus("error");
+          clearShareSessionKeys();
           return;
         }
         const business = data.businessId
@@ -135,6 +155,7 @@ function AppInner() {
       } catch (_) {
         setShareError("Something went wrong loading this link.");
         setShareStatus("error");
+        clearShareSessionKeys();
       }
     }, alreadyAttempted ? 0 : 1500);
 
@@ -154,6 +175,7 @@ function AppInner() {
       setShareStatus("idle");
       setShareBusinessState(null);
       clearShareHash();
+      clearShareSessionKeys();
       return;
     }
 
@@ -191,6 +213,7 @@ function AppInner() {
       } catch (err) {
         setShareError(err.message || "Could not open this link.");
         setShareStatus("error");
+        clearShareSessionKeys();
       }
     })();
   }, [isLoading, user, shareStatus, shareBusiness, shareToken]);
@@ -267,7 +290,7 @@ function AppInner() {
       <CenteredMessage>
         <p style={{ color: "#b91c1c", margin: 0, fontWeight: 600 }}>{shareError}</p>
         <button
-          onClick={() => { setShareStatus("idle"); clearShareHash(); }}
+          onClick={() => { setShareStatus("idle"); clearShareHash(); clearShareSessionKeys(); }}
           style={{
             marginTop: 8, padding: "10px 24px", backgroundColor: "#2563eb",
             color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer",
@@ -332,9 +355,20 @@ function AppInner() {
           onGlobalClaimed={handleGlobalBusinessClaimed}
         />
       );
+    } else if (shareStatus === "loading" || shareStatus === "ready") {
+      // Fold-in is still in flight (e.g. auth just resolved a beat before
+      // the share-resolve fetch did) — show a spinner instead of bailing
+      // out to "session ended" while effect #2 catches up.
+      guestContent = (
+        <CenteredMessage>
+          <Spinner />
+          <p style={{ color: "#6b7280", margin: 0 }}>Loading…</p>
+        </CenteredMessage>
+      );
     } else {
-      // No business in hand and no share flow running — e.g. a guest
-      // refreshed the page without the #/share/:token hash present.
+      // No business in hand and no share flow running at all — e.g. a
+      // guest refreshed the page with no token recoverable from the hash
+      // or sessionStorage.
       guestContent = (
         <CenteredMessage>
           <p style={{ color: "#374151", margin: 0, fontWeight: 600 }}>This shared link session has ended.</p>
