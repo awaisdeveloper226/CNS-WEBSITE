@@ -60,6 +60,7 @@ function clearShareHash() {
 function exitGuestSession() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
   clearShareSessionKeys();
+  clearShareHash(); // otherwise the reload just re-reads the hash and logs the same guest back in
   window.location.reload();
 }
 
@@ -174,8 +175,15 @@ function AppInner() {
       setSelectedBusiness(shareBusiness);
       setShareStatus("idle");
       setShareBusinessState(null);
-      clearShareHash();
-      clearShareSessionKeys();
+      // Real users have the whole site to fall back on, so it's safe (and
+      // nicer) to clean up the URL/session once they're folded in. Guests
+      // have nothing else to fall back on — keeping the hash + pending
+      // token alive is what lets a refresh recover the same business
+      // instead of dead-ending on "session ended".
+      if (!user.isGuest) {
+        clearShareHash();
+        clearShareSessionKeys();
+      }
       return;
     }
 
