@@ -117,6 +117,16 @@ const useAuth = () => {
     }
   };
 
+  // ── Set session directly ─────────────────────────────────────────────────
+  // For flows that already have both a token AND the user object in hand
+  // (e.g. the share-link guest-login endpoint), so we don't need to reload
+  // the page or make a second AUTH_ME round-trip just to get
+  // useAuthContext to notice the new session.
+  const setSession = (token, user) => {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+    setAuthState((prev) => ({ ...prev, user, token, isLoading: false, error: null }));
+  };
+
   // ── Logout ────────────────────────────────────────────────────────────────
   const logout = () => {
     localStorage.removeItem(AUTH_TOKEN_KEY);
@@ -198,6 +208,7 @@ const useAuth = () => {
     setMode,
     login,
     register,
+    setSession,
     logout,
     forgotPassword,
     resetPassword,

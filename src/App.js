@@ -95,7 +95,7 @@ function GuestExitScreen({ businessName, onReturnToBusiness }) {
 
 // ── Inner app — needs AuthContext ─────────────────────────────────────────────
 function AppInner() {
-  const { user, isLoading } = useAuthContext();
+  const { user, isLoading, setSession } = useAuthContext();
   const isGuestUser = !!user?.isGuest;
 
   const [tab, setTab]                           = useState("home");
@@ -107,12 +107,20 @@ function AppInner() {
   const homeScrollOffsetRef = useRef(0);
 
   // ── Share-link state ─────────────────────────────────────────────────────
-  // status: 'idle' | 'loading' | 'ready' | 'error'
+  // status: 'idle' | 'loading' | 'ready' | 'done' | 'error'
+  // 'done' means "a share business was folded into selectedBusiness" — kept
+  // distinct from 'idle' on purpose (see effect #2b below) so that finishing
+  // the fold-in doesn't itself look like "no share flow ever happened" and
+  // re-trigger the plain login/logout reset.
   const [shareStatus, setShareStatus] = useState("idle");
   const [shareBusiness, setShareBusinessState] = useState(null);
   const [shareToken, setShareToken] = useState(null);
   const [shareError, setShareError] = useState(null);
   const guestLoginAttempted = useRef(false);
+  // Tracks the last user id we ran the "login/logout reset" for, so that
+  // effect #2b only fires on an actual identity change — not on every
+  // shareStatus/shareBusiness tick coming out of effect #2a.
+  const prevUserIdRef = useRef(undefined);
 
   // 1) On first load, detect a #/share/:token hash — try to hand off to the
   //    installed app, then fall back to fetching a public preview here.
@@ -163,50 +171,64 @@ function AppInner() {
     return () => clearTimeout(timer);
   }, []);
 
-  // 2) SINGLE effect owning both "fold a shared business in" and "reset
-  //    state on user change" — these used to be two separate effects that
-  //    both fired on the same user transition, and since the reset effect
-  //    was declared after the fold-in effect, it ran second and wiped the
-  //    business right back out. Merging them removes the ordering race.
+  // 2a) Fold a resolved share business into state once we have a user.
+  //     Split out from the reset effect below on purpose: this effect writes
+  //     shareStatus, and if the reset effect also depended on shareStatus
+  //     and treated "not ready" as "reset", the two would ping-pong —
+  //     fold in, re-render, reset effect sees shareStatus change and wipes
+  //     selectedBusiness right back out. Setting shareStatus to "done"
+  //     (instead of "idle") plus gating the reset on user-id change instead
+  //     of on shareStatus removes that loop entirely.
   useEffect(() => {
     if (isLoading) return;
+    if (!(user && shareStatus === "ready" && shareBusiness)) return;
 
-    if (user && shareStatus === "ready" && shareBusiness) {
-      setSelectedBusiness(shareBusiness);
-      setShareStatus("idle");
-      setShareBusinessState(null);
-      // Real users have the whole site to fall back on, so it's safe (and
-      // nicer) to clean up the URL/session once they're folded in. Guests
-      // have nothing else to fall back on — keeping the hash + pending
-      // token alive is what lets a refresh recover the same business
-      // instead of dead-ending on "session ended".
-      if (!user.isGuest) {
-        clearShareHash();
-        clearShareSessionKeys();
-      }
-      return;
-    }
-
-    // Normal reset on login/logout — only when there's no share flow in
-    // progress (shareStatus is "idle" the entire time for ordinary
-    // sessions, so this behaves exactly as before for everyone else).
-    if (shareStatus === "idle") {
-      setTab("home");
-      setSelectedBusiness(null);
-      setShowUploadFlow(false);
-      setSelectedInstruction(null);
-      setGuestShowExit(false);
+    setSelectedBusiness(shareBusiness);
+    setShareStatus("done");
+    setShareBusinessState(null);
+    // Real users have the whole site to fall back on, so it's safe (and
+    // nicer) to clean up the URL/session once they're folded in. Guests
+    // have nothing else to fall back on — keeping the hash + pending
+    // token alive is what lets a refresh recover the same business
+    // instead of dead-ending on "session ended".
+    if (!user.isGuest) {
+      clearShareHash();
+      clearShareSessionKeys();
     }
   }, [user, isLoading, shareStatus, shareBusiness]);
 
-  // 3) If the visitor is NOT logged in, silently sign them in as a guest
-  //    scoped to this specific link (view/edit/upload all just work
-  //    afterward, since every screen only checks for a valid token). A full
-  //    reload is used so the existing auth hook re-initializes from the
-  //    freshly-stored token without needing to know its internals.
+  // 2b) Normal reset on an actual login/logout/user-switch. Gated on
+  //     user?._id changing (via prevUserIdRef) rather than on shareStatus,
+  //     so it no longer re-fires as a side effect of 2a completing. Still
+  //     skips the reset while a share flow is actively resolving, so it
+  //     doesn't stomp on a business that's about to be folded in.
   useEffect(() => {
     if (isLoading) return;
-    if (user) return; // handled by effect #2 above
+
+    const currentUserId = user?._id ?? null;
+    if (prevUserIdRef.current === currentUserId) return;
+    prevUserIdRef.current = currentUserId;
+
+    if (shareStatus === "loading" || shareStatus === "ready") return;
+
+    setTab("home");
+    setSelectedBusiness(null);
+    setShowUploadFlow(false);
+    setSelectedInstruction(null);
+    setGuestShowExit(false);
+  }, [user, isLoading, shareStatus]);
+
+  // 3) If the visitor is NOT logged in, silently sign them in as a guest
+  //    scoped to this specific link (view/edit/upload all just work
+  //    afterward, since every screen only checks for a valid token).
+  //    setSession populates auth state directly from the guest-login
+  //    response — no page reload and no extra AUTH_ME round-trip needed,
+  //    since the endpoint already returns both the token and the user.
+  //    Once `user` is set here, effect #2a picks up on the very next
+  //    render and folds shareBusiness straight into selectedBusiness.
+  useEffect(() => {
+    if (isLoading) return;
+    if (user) return; // handled by effect #2a above
     if (shareStatus !== "ready" || !shareBusiness || !shareToken) return;
     if (guestLoginAttempted.current) return;
     guestLoginAttempted.current = true;
@@ -216,15 +238,15 @@ function AppInner() {
         const res = await fetch(API_ENDPOINTS.SHARE_GUEST_LOGIN(shareToken), { method: "POST" });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Could not open this link.");
-        localStorage.setItem(AUTH_TOKEN_KEY, data.token);
-        window.location.reload();
+        setSession(data.token, data.user);
       } catch (err) {
         setShareError(err.message || "Could not open this link.");
         setShareStatus("error");
         clearShareSessionKeys();
+        guestLoginAttempted.current = false;
       }
     })();
-  }, [isLoading, user, shareStatus, shareBusiness, shareToken]);
+  }, [isLoading, user, shareStatus, shareBusiness, shareToken, setSession]);
 
   // ── Load cached businesses from localStorage on start ──
   useEffect(() => {
@@ -282,13 +304,15 @@ function AppInner() {
   };
 
   // ── Share-link loading / error states — take priority over everything ─────
+  // Covers both "resolving the link" and "signing the guest in" — these used
+  // to be two visibly different screens because guest sign-in triggered a
+  // full page reload; now it's all in-memory, so one steady message spans
+  // the whole thing instead of flashing between two.
   if (shareStatus === "loading" || (shareStatus === "ready" && !user && !isLoading)) {
     return (
       <CenteredMessage>
         <Spinner />
-        <p style={{ color: "#6b7280", margin: 0 }}>
-          {shareStatus === "loading" ? "Opening business…" : "Setting things up…"}
-        </p>
+        <p style={{ color: "#6b7280", margin: 0 }}>Opening business…</p>
       </CenteredMessage>
     );
   }
@@ -366,7 +390,7 @@ function AppInner() {
     } else if (shareStatus === "loading" || shareStatus === "ready") {
       // Fold-in is still in flight (e.g. auth just resolved a beat before
       // the share-resolve fetch did) — show a spinner instead of bailing
-      // out to "session ended" while effect #2 catches up.
+      // out to "session ended" while effect #2a catches up.
       guestContent = (
         <CenteredMessage>
           <Spinner />
