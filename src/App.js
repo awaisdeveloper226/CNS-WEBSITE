@@ -73,7 +73,7 @@ function GuestExitScreen({ businessName, onReturnToBusiness }) {
         You're viewing {businessName || "this business"} through a shared link.
       </p>
       <p style={{ color: "#6b7280", margin: 0, fontSize: 14, maxWidth: 320 }}>
-        This link only gives access to this one business. Create a free account for full access to CNS.
+        This link only gives access to this one business. Create an account for full access to CNS.
       </p>
       <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
         <button
