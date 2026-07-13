@@ -16,7 +16,7 @@ import UploadFlowScreen from "./screens/Upload/UploadFlowScreen";
 // Warm up the backend
 fetch(`${API_ENDPOINTS.BUSINESSES}?skip=0&limit=1`).catch(() => {});
 
-// ── Simple full-screen loading/error UI shared by the share-link flow ────────
+// ── Simple full-screen loading/message UI shared by the share-link flow ──────
 function CenteredMessage({ children }) {
   return (
     <div style={{
@@ -44,15 +44,51 @@ function clearShareHash() {
   window.history.replaceState(null, "", window.location.pathname + window.location.search);
 }
 
+function exitGuestSession() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  window.location.reload();
+}
+
+// ── Shown when a guest backs out of their shared business — they don't get
+//    the normal app to fall back into, just a clear explanation + a way out.
+function GuestExitScreen({ businessName, onReturnToBusiness }) {
+  return (
+    <CenteredMessage>
+      <p style={{ color: "#374151", margin: 0, fontWeight: 600 }}>
+        You're viewing {businessName || "this business"} through a shared link.
+      </p>
+      <p style={{ color: "#6b7280", margin: 0, fontSize: 14, maxWidth: 320 }}>
+        This link only gives access to this one business. Create a free account for full access to CNS.
+      </p>
+      <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+        <button
+          onClick={onReturnToBusiness}
+          style={{ padding: "10px 20px", backgroundColor: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}
+        >
+          Back to business
+        </button>
+        <button
+          onClick={exitGuestSession}
+          style={{ padding: "10px 20px", backgroundColor: "#fff", color: "#2563eb", border: "1px solid #2563eb", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}
+        >
+          Create a full account
+        </button>
+      </div>
+    </CenteredMessage>
+  );
+}
+
 // ── Inner app — needs AuthContext ─────────────────────────────────────────────
 function AppInner() {
   const { user, isLoading } = useAuthContext();
+  const isGuestUser = !!user?.isGuest;
 
   const [tab, setTab]                           = useState("home");
   const [homeBusinesses, setHomeBusinesses]     = useState([]);
   const [selectedBusiness, setSelectedBusiness] = useState(null);
   const [showUploadFlow, setShowUploadFlow]     = useState(false);
   const [selectedInstruction, setSelectedInstruction] = useState(null); // { instructionId, businessId }
+  const [guestShowExit, setGuestShowExit]       = useState(false);
   const homeScrollOffsetRef = useRef(0);
 
   // ── Share-link state ─────────────────────────────────────────────────────
@@ -105,18 +141,33 @@ function AppInner() {
     return () => clearTimeout(timer);
   }, []);
 
-  // 2) If the visitor is already logged in (real account), fold the shared
-  //    business straight into the normal flow — full functionality, no
-  //    guest account needed.
+  // 2) SINGLE effect owning both "fold a shared business in" and "reset
+  //    state on user change" — these used to be two separate effects that
+  //    both fired on the same user transition, and since the reset effect
+  //    was declared after the fold-in effect, it ran second and wiped the
+  //    business right back out. Merging them removes the ordering race.
   useEffect(() => {
     if (isLoading) return;
+
     if (user && shareStatus === "ready" && shareBusiness) {
       setSelectedBusiness(shareBusiness);
       setShareStatus("idle");
       setShareBusinessState(null);
       clearShareHash();
+      return;
     }
-  }, [isLoading, user, shareStatus, shareBusiness]);
+
+    // Normal reset on login/logout — only when there's no share flow in
+    // progress (shareStatus is "idle" the entire time for ordinary
+    // sessions, so this behaves exactly as before for everyone else).
+    if (shareStatus === "idle") {
+      setTab("home");
+      setSelectedBusiness(null);
+      setShowUploadFlow(false);
+      setSelectedInstruction(null);
+      setGuestShowExit(false);
+    }
+  }, [user, isLoading, shareStatus, shareBusiness]);
 
   // 3) If the visitor is NOT logged in, silently sign them in as a guest
   //    scoped to this specific link (view/edit/upload all just work
@@ -155,14 +206,6 @@ function AppInner() {
       }
     } catch (_) {}
   }, []);
-
-  // ── Reset state when user changes ──
-  useEffect(() => {
-    setTab("home");
-    setSelectedBusiness(null);
-    setShowUploadFlow(false);
-    setSelectedInstruction(null);
-  }, [user]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleNavigate       = (business) => setSelectedBusiness(business);
@@ -249,7 +292,66 @@ function AppInner() {
   // ── Not logged in (and no share link in play) ──────────────────────────────
   if (!user) return <AuthScreen />;
 
-  // ── Pick the active screen ─────────────────────────────────────────────────
+  // ── Guest (share-link) sessions get a locked-down experience: only their
+  //    claimed business, its instructions, and nothing else — no navbar,
+  //    no other tabs, no way to browse the rest of the app.
+  if (isGuestUser) {
+    let guestContent;
+
+    if (guestShowExit) {
+      guestContent = (
+        <GuestExitScreen
+          businessName={selectedBusiness?.name}
+          onReturnToBusiness={() => setGuestShowExit(false)}
+        />
+      );
+    } else if (selectedInstruction) {
+      guestContent = (
+        <InstructionDetailScreen
+          instructionId={selectedInstruction.instructionId}
+          businessId={selectedInstruction.businessId}
+          onBack={handleBackFromInstruction}
+        />
+      );
+    } else if (showUploadFlow) {
+      guestContent = (
+        <UploadFlowScreen
+          onBack={() => setShowUploadFlow(false)}
+          onComplete={handleUploadComplete}
+          initialBusiness={selectedBusiness}
+        />
+      );
+    } else if (selectedBusiness) {
+      guestContent = (
+        <BusinessDetailScreen
+          business={selectedBusiness}
+          onBack={() => setGuestShowExit(true)}
+          onAddInstructions={() => setShowUploadFlow(true)}
+          onViewInstruction={handleViewInstruction}
+          onViewComments={handleViewComments}
+          onGlobalClaimed={handleGlobalBusinessClaimed}
+        />
+      );
+    } else {
+      // No business in hand and no share flow running — e.g. a guest
+      // refreshed the page without the #/share/:token hash present.
+      guestContent = (
+        <CenteredMessage>
+          <p style={{ color: "#374151", margin: 0, fontWeight: 600 }}>This shared link session has ended.</p>
+          <button
+            onClick={exitGuestSession}
+            style={{ marginTop: 8, padding: "10px 20px", backgroundColor: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}
+          >
+            Go to CNS
+          </button>
+        </CenteredMessage>
+      );
+    }
+
+    return <div style={{ minHeight: "100vh", backgroundColor: "#f9fafb" }}>{guestContent}</div>;
+  }
+
+  // ── Pick the active screen (real, non-guest users) ─────────────────────────
   let screenContent;
 
   // Instruction detail — highest priority overlay
