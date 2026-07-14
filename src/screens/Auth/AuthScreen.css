@@ -52,6 +52,17 @@
   margin: 0 0 6px;
 }
 
+
+.auth-price-box {
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
 .auth-sub-text {
   font-size: 13px;
   color: #6b7280;

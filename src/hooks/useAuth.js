@@ -10,6 +10,7 @@ const useAuth = () => {
     error: null,
     mode: "login",
     otpSent: false,
+    otpContext: "reset",
     resetEmail: "",
   });
 
@@ -85,7 +86,7 @@ const useAuth = () => {
     }
   };
 
-  // ── Register ──────────────────────────────────────────────────────────────
+  // ── Register (kept for potential future direct-registration use) ──────────
   const register = async (data) => {
     setAuthState((prev) => ({ ...prev, isLoading: true, error: null }));
     try {
@@ -118,10 +119,6 @@ const useAuth = () => {
   };
 
   // ── Set session directly ─────────────────────────────────────────────────
-  // For flows that already have both a token AND the user object in hand
-  // (e.g. the share-link guest-login endpoint), so we don't need to reload
-  // the page or make a second AUTH_ME round-trip just to get
-  // useAuthContext to notice the new session.
   const setSession = (token, user) => {
     localStorage.setItem(AUTH_TOKEN_KEY, token);
     setAuthState((prev) => ({ ...prev, user, token, isLoading: false, error: null }));
@@ -132,7 +129,7 @@ const useAuth = () => {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     setAuthState({
       user: null, token: null, isLoading: false,
-      error: null, mode: "login", otpSent: false, resetEmail: "",
+      error: null, mode: "login", otpSent: false, otpContext: "reset", resetEmail: "",
     });
   };
 
@@ -157,6 +154,7 @@ const useAuth = () => {
         error: null,
         mode: "otp",
         otpSent: true,
+        otpContext: "reset",
         resetEmail: email,
       }));
       return null;
@@ -166,7 +164,7 @@ const useAuth = () => {
     }
   };
 
-  // ── Reset password ────────────────────────────────────────────────────────
+  // ── Reset password (also used as "set password after payment") ────────────
   const resetPassword = async (otp, newPassword) => {
     const email = authState.resetEmail;
     setAuthState((prev) => ({ ...prev, isLoading: true, error: null }));
@@ -188,6 +186,7 @@ const useAuth = () => {
         error: null,
         mode: "login",
         otpSent: false,
+        otpContext: "reset",
         resetEmail: "",
       }));
       return null;
@@ -197,6 +196,55 @@ const useAuth = () => {
     }
   };
 
+  // ── Start subscription checkout ──────────────────────────────────────────
+  // On web, there's no in-app browser trick needed — just full navigate away
+  // to Stripe, and Stripe's success_url (WEBSITE_CHECKOUT_SUCCESS_URL on the
+  // backend) brings the browser straight back to /#/payment-success on this
+  // same site, which is a normal page load — no promise to await here.
+  const startCheckout = async (payload) => {
+    setAuthState((prev) => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const res = await fetch(API_ENDPOINTS.PAYMENT_CREATE_CHECKOUT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, platform: "web" }),
+      });
+      const responseText = await res.text();
+      let data;
+      try { data = JSON.parse(responseText); } catch { data = { message: "Server error" }; }
+      if (!res.ok) {
+        const msg = data.message || "Failed to start checkout";
+        setAuthState((prev) => ({ ...prev, isLoading: false, error: msg }));
+        return msg;
+      }
+
+      // Persist the email across the redirect via localStorage — React state
+      // won't survive Stripe navigating the browser away and back.
+      localStorage.setItem("cns_pending_checkout_email", payload.companyEmail.toLowerCase().trim());
+
+      window.location.href = data.url; // full navigation to Stripe Checkout
+      return null;
+    } catch (err) {
+      setAuthState((prev) => ({ ...prev, isLoading: false, error: err.message }));
+      return err.message;
+    }
+  };
+
+  // ── Called by the /#/payment-success route when the browser returns ──────
+  const completePaymentReturn = () => {
+    const email = localStorage.getItem("cns_pending_checkout_email") || "";
+    localStorage.removeItem("cns_pending_checkout_email");
+    setAuthState((prev) => ({
+      ...prev,
+      isLoading: false,
+      error: null,
+      mode: "otp",
+      otpSent: true,
+      otpContext: "welcome",
+      resetEmail: email,
+    }));
+  };
+
   return {
     user: authState.user,
     token: authState.token,
@@ -204,6 +252,7 @@ const useAuth = () => {
     error: authState.error,
     mode: authState.mode,
     otpSent: authState.otpSent,
+    otpContext: authState.otpContext,
     resetEmail: authState.resetEmail,
     setMode,
     login,
@@ -212,6 +261,8 @@ const useAuth = () => {
     logout,
     forgotPassword,
     resetPassword,
+    startCheckout,
+    completePaymentReturn,
   };
 };
 

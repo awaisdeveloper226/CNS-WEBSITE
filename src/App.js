@@ -95,7 +95,7 @@ function GuestExitScreen({ businessName, onReturnToBusiness }) {
 
 // ── Inner app — needs AuthContext ─────────────────────────────────────────────
 function AppInner() {
-  const { user, isLoading, setSession } = useAuthContext();
+  const { user, isLoading, setSession, completePaymentReturn } = useAuthContext();
   const isGuestUser = !!user?.isGuest;
 
   const [tab, setTab]                           = useState("home");
@@ -121,6 +121,21 @@ function AppInner() {
   // effect #2b only fires on an actual identity change — not on every
   // shareStatus/shareBusiness tick coming out of effect #2a.
   const prevUserIdRef = useRef(undefined);
+  const paymentReturnHandled = useRef(false);
+
+  // 0) Detect a #/payment-success hash from Stripe Checkout returning here.
+  //    Runs once, independent of auth/user state — the AuthScreen (rendered
+  //    below whenever !user) reads mode/otpContext off the same AuthContext
+  //    instance, so setting them here is enough for it to land on the
+  //    "Set Your Password" screen without any prop drilling.
+  useEffect(() => {
+    if (paymentReturnHandled.current) return;
+    if (!window.location.hash.startsWith("#/payment-success")) return;
+    paymentReturnHandled.current = true;
+
+    completePaymentReturn();
+    clearShareHash(); // reuses the same hash-clearing helper, name aside
+  }, [completePaymentReturn]);
 
   // 1) On first load, detect a #/share/:token hash — try to hand off to the
   //    installed app, then fall back to fetching a public preview here.

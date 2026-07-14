@@ -22,7 +22,6 @@ export const API_ENDPOINTS = {
   SEARCH_HISTORY_POST: `${API_BASE_URL}/users/search-history`,
   NEARBY_BUSINESSES: `${API_BASE_URL}/businesses/nearby`,
 
-
   SHARE_CREATE: `${API_BASE_URL}/share`,
   SHARE_RESOLVE: (token) => `${API_BASE_URL}/share/${token}`,
   SHARE_CLAIM: (token) => `${API_BASE_URL}/share/${token}/claim`,
@@ -33,6 +32,11 @@ export const API_ENDPOINTS = {
 
   AUTH_FORGOT_PASSWORD: `${API_BASE_URL}/auth/forgot-password`,
   AUTH_RESET_PASSWORD: `${API_BASE_URL}/auth/reset-password`,
+
+  // Payments
+  PAYMENT_PRICE_INFO: `${API_BASE_URL}/payments/price-info`,
+  PAYMENT_CREATE_CHECKOUT: `${API_BASE_URL}/payments/create-checkout-session`,
+  PAYMENT_UPDATE_DRIVER_COUNT: `${API_BASE_URL}/payments/update-driver-count`,
 
   BUSINESS_FROM_GLOBAL: `${API_BASE_URL}/businesses/from-global`,
 

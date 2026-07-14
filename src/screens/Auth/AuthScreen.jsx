@@ -1,22 +1,56 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MapPin, Mail, Lock, User as UserIcon, ArrowLeft } from "lucide-react";
 import { useAuthContext } from "../../context/AuthContext";
+import { API_ENDPOINTS } from "../../constants/network";
 import "./AuthScreen.css";
 
 export default function AuthScreen() {
   const {
-    login, register, forgotPassword, resetPassword,
-    isLoading, error, mode, setMode, otpSent, resetEmail,
+    login, forgotPassword, resetPassword, startCheckout,
+    isLoading, error, mode, setMode, otpSent, otpContext, resetEmail,
   } = useAuthContext();
 
-  const [name, setName]                         = useState("");
-  const [email, setEmail]                       = useState("");
-  const [password, setPassword]                 = useState("");
-  const [confirmPassword, setConfirmPassword]   = useState("");
-  const [otp, setOtp]                           = useState("");
-  const [newPassword, setNewPassword]           = useState("");
+  // Login fields
+  const [email, setEmail]           = useState("");
+  const [password, setPassword]     = useState("");
+
+  // Company signup fields
+  const [companyName, setCompanyName]   = useState("");
+  const [companyEmail, setCompanyEmail] = useState("");
+  const [driverCount, setDriverCount]   = useState("");
+
+  // OTP / reset fields
+  const [otp, setOtp]                               = useState("");
+  const [newPassword, setNewPassword]               = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
-  const [localError, setLocalError]             = useState("");
+  const [localError, setLocalError]                 = useState("");
+
+  // Live per-driver price
+  const [unitPrice, setUnitPrice]     = useState(null);
+  const [priceLoading, setPriceLoading] = useState(true);
+
+  useEffect(() => {
+    const loadPrice = async () => {
+      try {
+        const res = await fetch(API_ENDPOINTS.PAYMENT_PRICE_INFO);
+        const data = await res.json();
+        if (res.ok && typeof data.unitAmountDecimal === "number") {
+          setUnitPrice(data.unitAmountDecimal);
+        }
+      } catch {
+        // silent — falls back to generic copy below
+      } finally {
+        setPriceLoading(false);
+      }
+    };
+    loadPrice();
+  }, []);
+
+  const parsedDriverCount = parseInt(driverCount, 10);
+  const estimatedMonthlyCost =
+    unitPrice !== null && !isNaN(parsedDriverCount) && parsedDriverCount > 0
+      ? parsedDriverCount * unitPrice
+      : 0;
 
   const showErr = (msg) => setLocalError(msg);
   const clearErr = () => setLocalError("");
@@ -29,11 +63,12 @@ export default function AuthScreen() {
     if (err) showErr(err);
   };
 
-  const handleRegister = async () => {
+  const handleSubscribe = async () => {
     clearErr();
-    if (!name || !email || !password) return showErr("All fields are required.");
-    if (password !== confirmPassword) return showErr("Passwords do not match.");
-    const err = await register({ name, email, password });
+    if (!companyName || !companyEmail || !driverCount) return showErr("All fields are required.");
+    const count = parseInt(driverCount, 10);
+    if (isNaN(count) || count <= 0) return showErr("Please enter a valid number of drivers.");
+    const err = await startCheckout({ companyName, companyEmail, driverCount: count });
     if (err) showErr(err);
   };
 
@@ -94,14 +129,19 @@ export default function AuthScreen() {
     </>
   );
 
-  // ── OTP ────────────────────────────────────────────────────────────────────
+  // ── OTP (also reused as "set your password" after payment) ─────────────────
   const renderOtp = () => (
     <>
-      <button className="auth-back-btn" onClick={() => { clearErr(); setMode("forgot"); }}>
+      <button
+        className="auth-back-btn"
+        onClick={() => { clearErr(); setMode(otpContext === "welcome" ? "login" : "forgot"); }}
+      >
         <ArrowLeft size={18} color="#2563eb" />
         <span>Back</span>
       </button>
-      <h2 className="auth-form-title">Enter Reset Code</h2>
+      <h2 className="auth-form-title">
+        {otpContext === "welcome" ? "Set Your Password" : "Enter Reset Code"}
+      </h2>
       {otpSent && (
         <div className="auth-success-box">
           <p className="auth-success-text">
@@ -110,7 +150,11 @@ export default function AuthScreen() {
           <p className="auth-success-sub">Check your inbox and spam folder</p>
         </div>
       )}
-      <p className="auth-sub-text">Enter the 6-digit code and choose a new password.</p>
+      <p className="auth-sub-text">
+        {otpContext === "welcome"
+          ? "Payment received! Enter the code we emailed you and choose your password."
+          : "Enter the 6-digit code and choose a new password."}
+      </p>
       {displayError && <div className="auth-error-box">{displayError}</div>}
       <div className="auth-input-row auth-otp-row">
         <input
@@ -145,7 +189,7 @@ export default function AuthScreen() {
         />
       </div>
       <button className="auth-btn" onClick={handleResetPassword} disabled={isLoading}>
-        {isLoading ? <span className="auth-spinner" /> : "Reset Password"}
+        {isLoading ? <span className="auth-spinner" /> : (otpContext === "welcome" ? "Set Password" : "Reset Password")}
       </button>
       <div className="auth-resend-row">
         <span className="auth-resend-text">Didn't receive a code? </span>
@@ -156,77 +200,105 @@ export default function AuthScreen() {
     </>
   );
 
-  // ── Login / Register ───────────────────────────────────────────────────────
+  // ── Login / Company Signup ──────────────────────────────────────────────────
   const renderLoginRegister = () => (
     <>
       <h2 className="auth-form-title">
-        {mode === "register" ? "Create Account" : "Welcome Back"}
+        {mode === "register" ? "Subscribe Your Company" : "Welcome Back"}
       </h2>
       {displayError && <div className="auth-error-box">{displayError}</div>}
-      {mode === "register" && (
-        <div className="auth-input-row">
-          <UserIcon size={20} color="#6b7280" />
-          <input
-            className="auth-input"
-            type="text"
-            placeholder="Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            autoComplete="name"
-          />
-        </div>
+
+      {mode === "register" ? (
+        <>
+          <p className="auth-sub-text">
+            {priceLoading
+              ? "Loading pricing..."
+              : unitPrice !== null
+              ? `$${unitPrice.toFixed(2)} per driver / month — cancel anytime.`
+              : "Per-driver monthly subscription — cancel anytime."}
+          </p>
+          <div className="auth-input-row">
+            <UserIcon size={20} color="#6b7280" />
+            <input
+              className="auth-input"
+              type="text"
+              placeholder="Company Name"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+            />
+          </div>
+          <div className="auth-input-row">
+            <Mail size={20} color="#6b7280" />
+            <input
+              className="auth-input"
+              type="email"
+              placeholder="Company Email"
+              value={companyEmail}
+              onChange={(e) => setCompanyEmail(e.target.value)}
+              autoComplete="email"
+            />
+          </div>
+          <div className="auth-input-row">
+            <UserIcon size={20} color="#6b7280" />
+            <input
+              className="auth-input"
+              type="number"
+              min="1"
+              placeholder="Number of Drivers"
+              value={driverCount}
+              onChange={(e) => setDriverCount(e.target.value)}
+            />
+          </div>
+          {estimatedMonthlyCost > 0 && (
+            <div className="auth-price-box">
+              {parsedDriverCount} driver{parsedDriverCount === 1 ? "" : "s"} × ${unitPrice.toFixed(2)} ={" "}
+              <strong>${estimatedMonthlyCost.toFixed(2)}/mo</strong>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="auth-input-row">
+            <Mail size={20} color="#6b7280" />
+            <input
+              className="auth-input"
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+            />
+          </div>
+          <div className="auth-input-row">
+            <Lock size={20} color="#6b7280" />
+            <input
+              className="auth-input"
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+          </div>
+          <div className="auth-forgot-row">
+            <button className="auth-forgot-link" onClick={() => { clearErr(); setMode("forgot"); }}>
+              Forgot password?
+            </button>
+          </div>
+        </>
       )}
-      <div className="auth-input-row">
-        <Mail size={20} color="#6b7280" />
-        <input
-          className="auth-input"
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="email"
-        />
-      </div>
-      <div className="auth-input-row">
-        <Lock size={20} color="#6b7280" />
-        <input
-          className="auth-input"
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete={mode === "register" ? "new-password" : "current-password"}
-        />
-      </div>
-      {mode === "register" && (
-        <div className="auth-input-row">
-          <Lock size={20} color="#6b7280" />
-          <input
-            className="auth-input"
-            type="password"
-            placeholder="Confirm Password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            autoComplete="new-password"
-          />
-        </div>
-      )}
-      {mode === "login" && (
-        <div className="auth-forgot-row">
-          <button className="auth-forgot-link" onClick={() => { clearErr(); setMode("forgot"); }}>
-            Forgot password?
-          </button>
-        </div>
-      )}
+
       <button
         className="auth-btn"
-        onClick={mode === "register" ? handleRegister : handleLogin}
+        onClick={mode === "register" ? handleSubscribe : handleLogin}
         disabled={isLoading}
-        onKeyDown={(e) => e.key === "Enter" && (mode === "register" ? handleRegister() : handleLogin())}
+        onKeyDown={(e) => e.key === "Enter" && (mode === "register" ? handleSubscribe() : handleLogin())}
       >
         {isLoading
           ? <span className="auth-spinner" />
-          : mode === "register" ? "Sign Up" : "Sign In"
+          : mode === "register"
+            ? (estimatedMonthlyCost > 0 ? `Subscribe – $${estimatedMonthlyCost.toFixed(2)}/mo` : "Subscribe")
+            : "Sign In"
         }
       </button>
       <button
@@ -235,7 +307,7 @@ export default function AuthScreen() {
       >
         {mode === "register"
           ? "Already have an account? Sign In"
-          : "Don't have an account? Sign Up"}
+          : "New company? Subscribe"}
       </button>
     </>
   );
@@ -243,14 +315,12 @@ export default function AuthScreen() {
   return (
     <div className="auth-root">
       <div className="auth-inner">
-        {/* Hero header */}
         <div className="auth-header">
           <MapPin size={56} color="#2563eb" />
           <h1 className="auth-app-title">CNS</h1>
           <p className="auth-app-subtitle">Community powered delivery guides</p>
         </div>
 
-        {/* Card */}
         <div className="auth-card">
           {mode === "forgot" && renderForgot()}
           {mode === "otp"    && renderOtp()}
