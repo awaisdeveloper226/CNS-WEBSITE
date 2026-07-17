@@ -1,4 +1,4 @@
-export const API_BASE_URL = `https://cns-backend-2c16.onrender.com/api`;
+export const API_BASE_URL = `https://cns-backend-652t.onrender.com/api`;
 
 export const API_ENDPOINTS = {
   // Auth

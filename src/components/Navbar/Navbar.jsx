@@ -20,9 +20,9 @@ export default function NavBar({ active, onChange }) {
         <span className="nav-label">Search</span>
       </button>
 
-      <button className="nav-add" onClick={() => onChange("add")} aria-label="Add contribution">
+      {/* <button className="nav-add" onClick={() => onChange("add")} aria-label="Add contribution">
         <Plus size={28} color="#fff" />
-      </button>
+      </button> */}
 
       <button
         className={`nav-item ${active === "community" ? "active" : ""}`}

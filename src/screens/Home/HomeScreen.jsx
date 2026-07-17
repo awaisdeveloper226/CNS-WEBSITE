@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Search, Settings, Plus, CheckCircle, MapPin } from "lucide-react";
+import { Search, Settings, Plus, CheckCircle2, MapPin, ArrowUpRight } from "lucide-react";
 import { API_ENDPOINTS } from "../../constants/network";
 import "./HomeScreen.css";
 
@@ -8,20 +8,46 @@ const INITIAL_BATCH = 5;
 const LOAD_BATCH = 25;
 const BATCH_DELAY_MS = 50;
 
+// ── RouteDivider — the recurring "waypoint" signature element ───────────────
+function RouteDivider() {
+  return (
+    <div className="route-divider" aria-hidden="true">
+      <svg viewBox="0 0 400 16" preserveAspectRatio="none">
+        <line x1="0" y1="8" x2="400" y2="8" />
+      </svg>
+      <span className="route-dot" />
+      <span className="route-dot" />
+      <span className="route-dot" />
+    </div>
+  );
+}
+
 // ── BusinessCard ─────────────────────────────────────────────────────────────
 function BusinessCard({ business, onNavigate }) {
+  const initial = (business.name || "?").trim().charAt(0).toUpperCase();
+
   return (
-    <button className="card" onClick={() => onNavigate(business)}>
-      <div className="card-header">
-        <span className="card-title">{business.name}</span>
+    <button className="biz-card" onClick={() => onNavigate(business)}>
+      <div className="biz-card-top">
+        <span className="biz-avatar" aria-hidden="true">{initial}</span>
         {business.isVerified && (
-          <CheckCircle size={16} color="#10b981" aria-label="Verified" />
+          <span className="biz-badge">
+            <CheckCircle2 size={13} strokeWidth={2.5} />
+            Verified
+          </span>
         )}
       </div>
-      <div className="card-row">
-        <MapPin size={14} color="#6b7280" />
-        <span className="card-text">{business.address}</span>
-      </div>
+
+      <h3 className="biz-name">{business.name}</h3>
+
+      <p className="biz-address">
+        <MapPin size={14} strokeWidth={2} />
+        <span>{business.address}</span>
+      </p>
+
+      <span className="biz-cta">
+        View directions <ArrowUpRight size={14} strokeWidth={2.5} />
+      </span>
     </button>
   );
 }
@@ -29,7 +55,8 @@ function BusinessCard({ business, onNavigate }) {
 // ── Skeleton Card ─────────────────────────────────────────────────────────────
 function SkeletonCard() {
   return (
-    <div className="card skeleton-card" aria-hidden="true">
+    <div className="biz-card biz-skeleton" aria-hidden="true">
+      <div className="skeleton skeleton-avatar" />
       <div className="skeleton skeleton-title" />
       <div className="skeleton skeleton-row" />
     </div>
@@ -113,43 +140,82 @@ export default function HomeScreen({
     return () => { isMounted.current = false; };
   }, []);
 
+  const verifiedCount = businesses.filter((b) => b.isVerified).length;
+
   // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div className="hs-root">
-      <div className="hs-inner">
 
-        {/* ── Header ── */}
-        <header className="hs-header">
-          <div>
-            <h1 className="hs-title">CNS</h1>
-            <p className="hs-subtitle">Community powered delivery guides</p>
+      {/* ── Top nav ── */}
+      <header className="hs-nav">
+        <div className="hs-nav-inner">
+          <div className="hs-wordmark">
+            <span className="hs-wordmark-dot" aria-hidden="true" />
+            CNS
           </div>
-          <button
-            className="hs-profile-btn"
-            onClick={onProfilePress}
-            aria-label="Settings"
-          >
-            <Settings size={24} color="#6b7280" />
+
+          <nav className="hs-nav-links" aria-label="Primary">
+            <button className="hs-nav-link" onClick={onSearchPress}>Search</button>
+            <button className="hs-nav-link" onClick={onContributePress}>Contribute</button>
+          </nav>
+
+          <button className="hs-nav-icon" onClick={onProfilePress} aria-label="Settings">
+            <Settings size={20} strokeWidth={2} />
           </button>
-        </header>
+        </div>
+      </header>
 
-        {/* ── Search box ── */}
-        <button className="hs-search-box" onClick={onSearchPress} aria-label="Open search">
-          <Search size={18} color="#9ca3af" />
-          <span className="hs-search-placeholder">Search businesses...</span>
-        </button>
+      {/* ── Hero ── */}
+      <section className="hs-hero">
+        <div className="hs-hero-inner">
+          <span className="hs-eyebrow">Community-mapped delivery guides</span>
+          <h1 className="hs-headline">
+            Find the door<br />couriers actually use.
+          </h1>
+          <p className="hs-subhead">
+            CNS is a courier-verified map of real entry points &mdash; loading
+            docks, side gates, and back entrances that a pin on a map will
+            never show you.
+          </p>
 
-        {/* ── Contribute CTA ── */}
-        <button className="hs-contribute-btn" onClick={onContributePress}>
-          <Plus size={22} color="#fff" />
-          <span>Start Contributing</span>
-        </button>
+          <button className="hs-search-box" onClick={onSearchPress} aria-label="Open search">
+            <Search size={18} strokeWidth={2} />
+            <span className="hs-search-placeholder">Search a business, area, or address&hellip;</span>
+            <span className="hs-search-kbd">Enter</span>
+          </button>
+
+          <div className="hs-hero-actions">
+            <button className="hs-btn-primary" onClick={onContributePress}>
+              <Plus size={18} strokeWidth={2.5} />
+              Start contributing
+            </button>
+            <span className="hs-hero-stat">
+              {businesses.length > 0
+                ? `${businesses.length} businesses mapped${verifiedCount ? ` · ${verifiedCount} verified` : ""}`
+                : "Community verified, always growing"}
+            </span>
+          </div>
+        </div>
+
+        <svg className="hs-hero-route" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M -20 160 C 250 40, 500 220, 750 90 S 1150 30, 1230 100" />
+        </svg>
+      </section>
+
+      <div className="hs-content">
+        <RouteDivider />
 
         {/* ── Section heading ── */}
         <div className="hs-section-row">
-          <h2 className="hs-section-title">Popular Businesses</h2>
+          <div>
+            <h2 className="hs-section-title">Popular businesses</h2>
+            <p className="hs-section-sub">Entry points near you, contributed by the community</p>
+          </div>
           {backgroundLoading && (
-            <span className="hs-bg-dot" title="Loading more…" aria-label="Loading more businesses" />
+            <span className="hs-bg-pill" role="status">
+              <span className="hs-bg-dot" />
+              Loading more
+            </span>
           )}
         </div>
 
@@ -158,29 +224,43 @@ export default function HomeScreen({
 
         {/* ── Skeletons while initial load ── */}
         {initialLoading && (
-          <div className="hs-list">
-            {[1, 2, 3].map((i) => <SkeletonCard key={i} />)}
+          <div className="hs-grid">
+            {[1, 2, 3, 4, 5, 6].map((i) => <SkeletonCard key={i} />)}
           </div>
         )}
 
         {/* ── Empty state ── */}
         {!initialLoading && !error && businesses.length === 0 && (
-          <p className="hs-empty">
-            No popular businesses found. Try searching or creating one!
-          </p>
+          <div className="hs-empty">
+            <MapPin size={22} strokeWidth={1.75} />
+            <p>No popular businesses found yet.</p>
+            <button className="hs-empty-link" onClick={onContributePress}>Be the first to add one</button>
+          </div>
         )}
 
-        {/* ── Business list ── */}
+        {/* ── Business grid ── */}
         {!initialLoading && businesses.length > 0 && (
-          <div className="hs-list">
+          <div className="hs-grid">
             {businesses.map((b) => (
               <BusinessCard key={b.id ?? b._id} business={b} onNavigate={onNavigate} />
             ))}
           </div>
         )}
-
-        <div style={{ height: 40 }} />
       </div>
+
+      {/* ── Footer ── */}
+      <footer className="hs-footer">
+        <div className="hs-footer-inner">
+          <div className="hs-wordmark hs-wordmark-footer">
+            <span className="hs-wordmark-dot" aria-hidden="true" />
+            CNS
+          </div>
+          <p>Built by couriers, for couriers.</p>
+          <button className="hs-footer-link" onClick={onContributePress}>
+            Add a business <ArrowUpRight size={14} strokeWidth={2.5} />
+          </button>
+        </div>
+      </footer>
     </div>
   );
 }
