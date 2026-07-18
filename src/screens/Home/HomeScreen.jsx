@@ -156,7 +156,7 @@ export default function HomeScreen({
 
           <nav className="hs-nav-links" aria-label="Primary">
             <button className="hs-nav-link" onClick={onSearchPress}>Search</button>
-            <button className="hs-nav-link" onClick={onContributePress}>Contribute</button>
+            {/* <button className="hs-nav-link" onClick={onContributePress}>Contribute</button> */}
           </nav>
 
           <button className="hs-nav-icon" onClick={onProfilePress} aria-label="Settings">
