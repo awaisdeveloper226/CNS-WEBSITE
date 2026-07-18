@@ -185,10 +185,10 @@ export default function HomeScreen({
           </button>
 
           <div className="hs-hero-actions">
-            <button className="hs-btn-primary" onClick={onContributePress}>
+            {/* <button className="hs-btn-primary" onClick={onContributePress}>
               <Plus size={18} strokeWidth={2.5} />
               Start contributing
-            </button>
+            </button> */}
             <span className="hs-hero-stat">
               {businesses.length > 0
                 ? `${businesses.length} businesses mapped${verifiedCount ? ` · ${verifiedCount} verified` : ""}`
