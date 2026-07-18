@@ -256,9 +256,9 @@ export default function HomeScreen({
             CNS
           </div>
           <p>Built by couriers, for couriers.</p>
-          <button className="hs-footer-link" onClick={onContributePress}>
+          {/* <button className="hs-footer-link" onClick={onContributePress}>
             Add a business <ArrowUpRight size={14} strokeWidth={2.5} />
-          </button>
+          </button> */}
         </div>
       </footer>
     </div>
