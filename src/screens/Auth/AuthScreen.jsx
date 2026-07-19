@@ -27,6 +27,7 @@ export default function AuthScreen() {
 
   // Live per-driver price
   const [unitPrice, setUnitPrice]     = useState(null);
+  const [currency, setCurrency]       = useState("usd");
   const [priceLoading, setPriceLoading] = useState(true);
 
   useEffect(() => {
@@ -36,6 +37,9 @@ export default function AuthScreen() {
         const data = await res.json();
         if (res.ok && typeof data.unitAmountDecimal === "number") {
           setUnitPrice(data.unitAmountDecimal);
+          if (typeof data.currency === "string") {
+            setCurrency(data.currency);
+          }
         }
       } catch {
         // silent — falls back to generic copy below
@@ -45,6 +49,22 @@ export default function AuthScreen() {
     };
     loadPrice();
   }, []);
+
+  // Formats a number using the currency Stripe actually returns, instead of
+  // hardcoding "$" — so this stays correct if the Stripe price is ever
+  // switched to AUD, EUR, etc.
+  const formatMoney = (amount) => {
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency.toUpperCase(),
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(amount);
+    } catch {
+      return `${currency.toUpperCase()} ${amount.toFixed(2)}`;
+    }
+  };
 
   const parsedDriverCount = parseInt(driverCount, 10);
   const estimatedMonthlyCost =
@@ -214,7 +234,7 @@ export default function AuthScreen() {
             {priceLoading
               ? "Loading pricing..."
               : unitPrice !== null
-              ? `$${unitPrice.toFixed(2)} per driver / month — cancel anytime.`
+              ? `${formatMoney(unitPrice)} per driver / month — cancel anytime.`
               : "Per-driver monthly subscription — cancel anytime."}
           </p>
           <div className="auth-input-row">
@@ -251,8 +271,8 @@ export default function AuthScreen() {
           </div>
           {estimatedMonthlyCost > 0 && (
             <div className="auth-price-box">
-              {parsedDriverCount} driver{parsedDriverCount === 1 ? "" : "s"} × ${unitPrice.toFixed(2)} ={" "}
-              <strong>${estimatedMonthlyCost.toFixed(2)}/mo</strong>
+              {parsedDriverCount} driver{parsedDriverCount === 1 ? "" : "s"} × {formatMoney(unitPrice)} ={" "}
+              <strong>{formatMoney(estimatedMonthlyCost)}/mo</strong>
             </div>
           )}
         </>
@@ -297,7 +317,7 @@ export default function AuthScreen() {
         {isLoading
           ? <span className="auth-spinner" />
           : mode === "register"
-            ? (estimatedMonthlyCost > 0 ? `Subscribe – $${estimatedMonthlyCost.toFixed(2)}/mo` : "Subscribe")
+            ? (estimatedMonthlyCost > 0 ? `Subscribe – ${formatMoney(estimatedMonthlyCost)}/mo` : "Subscribe")
             : "Sign In"
         }
       </button>
