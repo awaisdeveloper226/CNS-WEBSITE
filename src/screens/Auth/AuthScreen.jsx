@@ -89,7 +89,13 @@ export default function AuthScreen() {
     const count = parseInt(driverCount, 10);
     if (isNaN(count) || count <= 0) return showErr("Please enter a valid number of drivers.");
     const err = await startCheckout({ companyName, companyEmail, driverCount: count });
-    if (err) showErr(err);
+    if (err) {
+      // Surface this as a browser alert (mirrors mobile's Alert.alert
+      // "Checkout Failed") so an "account already exists" response from the
+      // backend isn't missed as a small inline error box.
+      window.alert(err);
+      showErr(err);
+    }
   };
 
   const handleForgotPassword = async () => {
