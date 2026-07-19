@@ -328,7 +328,7 @@ export default function AuthScreen() {
         {isLoading
           ? <span className="auth-spinner" />
           : mode === "register"
-            ? (estimatedMonthlyCost > 0 ? `Get Started – ${formatMoney(estimatedMonthlyCost)}/mo` : "Get Started")
+            ? (estimatedMonthlyCost > 0 ? "Get Started" : "Get Started")
             : "Sign In"
         }
       </button>
