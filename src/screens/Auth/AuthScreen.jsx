@@ -1,363 +1,604 @@
-import { useState, useEffect } from "react";
-import { MapPin, Mail, Lock, User as UserIcon, ArrowLeft } from "lucide-react";
-import { useAuthContext } from "../../context/AuthContext";
-import { API_ENDPOINTS } from "../../constants/network";
-import "./AuthScreen.css";
+import { useState, useEffect, useRef } from "react";
+import { AuthProvider, useAuthContext } from "./context/AuthContext";
+import { API_ENDPOINTS, AUTH_TOKEN_KEY } from "./constants/network";
 
-export default function AuthScreen() {
-  const {
-    login, forgotPassword, resetPassword, startCheckout,
-    isLoading, error, mode, setMode, otpSent, otpContext, resetEmail,
-  } = useAuthContext();
+import NavBar from "./components/Navbar/Navbar";
+import HomeScreen from "./screens/Home/HomeScreen";
+import AuthScreen from "./screens/Auth/AuthScreen";
+import ProfileScreen from "./screens/Profile/ProfileScreen";
+import SearchScreen from "./screens/Search/SearchScreen";
+import InstructionDetailScreen from "./screens/Instructions/InstructionDetailScreen";
+import CommunityScreen from "./screens/Community/CommunityScreen";
+import BusinessDetailScreen from "./screens/Detail/BusinessDetailScreen";
+import UploadFlowScreen from "./screens/Upload/UploadFlowScreen";
 
-  // Login fields
-  const [email, setEmail]           = useState("");
-  const [password, setPassword]     = useState("");
 
-  // Company signup fields
-  const [companyName, setCompanyName]   = useState("");
-  const [companyEmail, setCompanyEmail] = useState("");
-  const [driverCount, setDriverCount]   = useState("");
+// Warm up the backend
+fetch(`${API_ENDPOINTS.BUSINESSES}?skip=0&limit=1`).catch(() => {});
 
-  // OTP / reset fields
-  const [otp, setOtp]                               = useState("");
-  const [newPassword, setNewPassword]               = useState("");
-  const [confirmNewPassword, setConfirmNewPassword] = useState("");
-  const [localError, setLocalError]                 = useState("");
+// ── Share-flow sessionStorage keys ────────────────────────────────────────────
+// Kept separate from the URL hash on purpose: the hash is the primary source,
+// but if anything clears/loses it (a redirect, a reload, another part of the
+// app touching window.location), these let the flow recover instead of
+// silently dead-ending on "session ended".
+const SHARE_PENDING_TOKEN_KEY = "cns_share_pending_token";
+const SHARE_DEEPLINK_ATTEMPTED_KEY = "cns_share_deeplink_attempted";
 
-  // Live per-driver price
-  const [unitPrice, setUnitPrice]     = useState(null);
-  const [currency, setCurrency]       = useState("usd");
-  const [priceLoading, setPriceLoading] = useState(true);
+function clearShareSessionKeys() {
+  sessionStorage.removeItem(SHARE_PENDING_TOKEN_KEY);
+  sessionStorage.removeItem(SHARE_DEEPLINK_ATTEMPTED_KEY);
+}
 
-  useEffect(() => {
-    const loadPrice = async () => {
-      try {
-        const res = await fetch(API_ENDPOINTS.PAYMENT_PRICE_INFO);
-        const data = await res.json();
-        if (res.ok && typeof data.unitAmountDecimal === "number") {
-          setUnitPrice(data.unitAmountDecimal);
-          if (typeof data.currency === "string") {
-            setCurrency(data.currency);
-          }
-        }
-      } catch {
-        // silent — falls back to generic copy below
-      } finally {
-        setPriceLoading(false);
-      }
-    };
-    loadPrice();
-  }, []);
-
-  // Formats a number using the currency Stripe actually returns, instead of
-  // hardcoding "$" — so this stays correct if the Stripe price is ever
-  // switched to AUD, EUR, etc.
-  const formatMoney = (amount) => {
-    try {
-      return new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: currency.toUpperCase(),
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(amount);
-    } catch {
-      return `${currency.toUpperCase()} ${amount.toFixed(2)}`;
-    }
-  };
-
-  const parsedDriverCount = parseInt(driverCount, 10);
-  const estimatedMonthlyCost =
-    unitPrice !== null && !isNaN(parsedDriverCount) && parsedDriverCount > 0
-      ? parsedDriverCount * unitPrice
-      : 0;
-
-  const showErr = (msg) => setLocalError(msg);
-  const clearErr = () => setLocalError("");
-
-  // ── Handlers ───────────────────────────────────────────────────────────────
-  const handleLogin = async () => {
-    clearErr();
-    if (!email || !password) return showErr("Email and password are required.");
-    const err = await login({ email, password });
-    if (err) showErr(err);
-  };
-
-  const handleSubscribe = async () => {
-    clearErr();
-    if (!companyName || !companyEmail || !driverCount) return showErr("All fields are required.");
-    const count = parseInt(driverCount, 10);
-    if (isNaN(count) || count <= 0) return showErr("Please enter a valid number of drivers.");
-    const err = await startCheckout({ companyName, companyEmail, driverCount: count });
-    if (err) {
-      // Surface this as a browser alert (mirrors mobile's Alert.alert
-      // "Checkout Failed") so an "account already exists" response from the
-      // backend isn't missed as a small inline error box.
-      window.alert(err);
-      showErr(err);
-    }
-  };
-
-  const handleForgotPassword = async () => {
-    clearErr();
-    if (!email) return showErr("Please enter your email.");
-    const err = await forgotPassword(email);
-    if (err) showErr(err);
-  };
-
-  const handleResendOtp = async () => {
-    clearErr();
-    const err = await forgotPassword(resetEmail);
-    if (err) showErr(err);
-    else { setOtp(""); setLocalError(""); }
-  };
-
-  const handleResetPassword = async () => {
-    clearErr();
-    if (!otp || !newPassword || !confirmNewPassword) return showErr("All fields are required.");
-    if (otp.length < 6) return showErr("Please enter the full 6-digit code.");
-    if (newPassword !== confirmNewPassword) return showErr("Passwords do not match.");
-    if (newPassword.length < 6) return showErr("Password must be at least 6 characters.");
-    const err = await resetPassword(otp, newPassword);
-    if (err) {
-      showErr(err);
-    } else {
-      setOtp(""); setNewPassword(""); setConfirmNewPassword("");
-    }
-  };
-
-  const displayError = localError || error;
-
-  // ── Forgot ─────────────────────────────────────────────────────────────────
-  const renderForgot = () => (
-    <>
-      <button className="auth-back-btn" onClick={() => { clearErr(); setMode("login"); }}>
-        <ArrowLeft size={18} color="#2563eb" />
-        <span>Back to Sign In</span>
-      </button>
-      <h2 className="auth-form-title">Forgot Password?</h2>
-      <p className="auth-sub-text">
-        No worries — enter your email and we'll send you a 6-digit code to get you back in.
-      </p>
-      {displayError && <div className="auth-error-box">{displayError}</div>}
-      <div className="auth-input-row">
-        <Mail size={20} color="#6b7280" />
-        <input
-          className="auth-input"
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="email"
-        />
-      </div>
-      <button className="auth-btn" onClick={handleForgotPassword} disabled={isLoading}>
-        {isLoading ? <span className="auth-spinner" /> : "Send Reset Code"}
-      </button>
-    </>
+// ── Simple full-screen loading/message UI shared by the share-link flow ──────
+function CenteredMessage({ children }) {
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      minHeight: "100vh", backgroundColor: "#f9fafb", gap: 12, padding: 24, textAlign: "center",
+    }}>
+      {children}
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
   );
+}
 
-  // ── OTP (also reused as "set your password" after payment) ─────────────────
-  const renderOtp = () => (
-    <>
-      <button
-        className="auth-back-btn"
-        onClick={() => { clearErr(); setMode(otpContext === "welcome" ? "login" : "forgot"); }}
-      >
-        <ArrowLeft size={18} color="#2563eb" />
-        <span>Back</span>
-      </button>
-      <h2 className="auth-form-title">
-        {otpContext === "welcome" ? "Almost There!" : "Enter Reset Code"}
-      </h2>
-      {otpSent && (
-        <div className="auth-success-box">
-          <p className="auth-success-text">
-            ✉️ Code sent to <strong>{resetEmail}</strong>
-          </p>
-          <p className="auth-success-sub">Check your inbox and spam folder</p>
-        </div>
-      )}
-      <p className="auth-sub-text">
-        {otpContext === "welcome"
-          ? "You're in! Enter the code we just emailed you and set a password to start navigating smarter deliveries today."
-          : "Enter the 6-digit code below and choose a new password."}
+function Spinner() {
+  return (
+    <div style={{
+      width: 36, height: 36, borderRadius: "50%",
+      border: "3px solid #e5e7eb", borderTopColor: "#2563eb",
+      animation: "spin 0.8s linear infinite",
+    }} />
+  );
+}
+
+function clearShareHash() {
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
+}
+
+function exitGuestSession() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  clearShareSessionKeys();
+  clearShareHash(); // otherwise the reload just re-reads the hash and logs the same guest back in
+  window.location.reload();
+}
+
+// ── Shown when a guest backs out of their shared business — they don't get
+//    the normal app to fall back into, just a clear explanation + a way out.
+function GuestExitScreen({ businessName, onReturnToBusiness }) {
+  return (
+    <CenteredMessage>
+      <p style={{ color: "#374151", margin: 0, fontWeight: 600 }}>
+        You're viewing {businessName || "this business"} through a shared link.
       </p>
-      {displayError && <div className="auth-error-box">{displayError}</div>}
-      <div className="auth-input-row auth-otp-row">
-        <input
-          className="auth-input auth-otp-input"
-          type="text"
-          inputMode="numeric"
-          placeholder="• • • • • •"
-          value={otp}
-          onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-          autoFocus
-          maxLength={6}
-        />
-      </div>
-      <div className="auth-input-row">
-        <Lock size={20} color="#6b7280" />
-        <input
-          className="auth-input"
-          type="password"
-          placeholder="New Password"
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-        />
-      </div>
-      <div className="auth-input-row">
-        <Lock size={20} color="#6b7280" />
-        <input
-          className="auth-input"
-          type="password"
-          placeholder="Confirm New Password"
-          value={confirmNewPassword}
-          onChange={(e) => setConfirmNewPassword(e.target.value)}
-        />
-      </div>
-      <button className="auth-btn" onClick={handleResetPassword} disabled={isLoading}>
-        {isLoading ? <span className="auth-spinner" /> : (otpContext === "welcome" ? "Set Password & Continue" : "Reset Password")}
-      </button>
-      <div className="auth-resend-row">
-        <span className="auth-resend-text">Didn't receive a code? </span>
-        <button className="auth-resend-link" onClick={handleResendOtp} disabled={isLoading}>
-          Resend
+      <p style={{ color: "#6b7280", margin: 0, fontSize: 14, maxWidth: 320 }}>
+        This link only gives access to this one business. Create an account for full access to CNS.
+      </p>
+      <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+        <button
+          onClick={onReturnToBusiness}
+          style={{ padding: "10px 20px", backgroundColor: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}
+        >
+          Back to business
+        </button>
+        <button
+          onClick={exitGuestSession}
+          style={{ padding: "10px 20px", backgroundColor: "#fff", color: "#2563eb", border: "1px solid #2563eb", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}
+        >
+          Create a full account
         </button>
       </div>
-    </>
+    </CenteredMessage>
   );
+}
 
-  // ── Login / Company Signup ──────────────────────────────────────────────────
-  const renderLoginRegister = () => (
-    <>
-      <h2 className="auth-form-title">
-        {mode === "register" ? "Get Your Fleet Moving" : "Welcome Back"}
-      </h2>
-      {displayError && <div className="auth-error-box">{displayError}</div>}
+// ── Inner app — needs AuthContext ─────────────────────────────────────────────
+function AppInner() {
+  const { user, isLoading, setSession, completePaymentReturn } = useAuthContext();
+  const isGuestUser = !!user?.isGuest;
 
-      {mode === "register" ? (
-        <>
-          <p className="auth-sub-text">
-            {priceLoading
-              ? "Loading pricing..."
-              : unitPrice !== null
-              ? `Just ${formatMoney(unitPrice)} per driver, per month. Cancel anytime — no contracts, no hidden fees.`
-              : "Simple per-driver pricing. Cancel anytime — no contracts, no hassle."}
-          </p>
-          <div className="auth-input-row">
-            <UserIcon size={20} color="#6b7280" />
-            <input
-              className="auth-input"
-              type="text"
-              placeholder="Company Name"
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-            />
-          </div>
-          <div className="auth-input-row">
-            <Mail size={20} color="#6b7280" />
-            <input
-              className="auth-input"
-              type="email"
-              placeholder="Company Email"
-              value={companyEmail}
-              onChange={(e) => setCompanyEmail(e.target.value)}
-              autoComplete="email"
-            />
-          </div>
-          <p className="auth-field-hint">
-            This is your shared login — all of your drivers will sign in with this one email and password.
-          </p>
-          <div className="auth-input-row">
-            <UserIcon size={20} color="#6b7280" />
-            <input
-              className="auth-input"
-              type="number"
-              min="1"
-              placeholder="Number of Drivers"
-              value={driverCount}
-              onChange={(e) => setDriverCount(e.target.value)}
-            />
-          </div>
-          {estimatedMonthlyCost > 0 && (
-            <div className="auth-price-box">
-              {parsedDriverCount} driver{parsedDriverCount === 1 ? "" : "s"} × {formatMoney(unitPrice)} ={" "}
-              <strong>{formatMoney(estimatedMonthlyCost)}/mo</strong>
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <div className="auth-input-row">
-            <Mail size={20} color="#6b7280" />
-            <input
-              className="auth-input"
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-            />
-          </div>
-          <div className="auth-input-row">
-            <Lock size={20} color="#6b7280" />
-            <input
-              className="auth-input"
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-            />
-          </div>
-          <div className="auth-forgot-row">
-            <button className="auth-forgot-link" onClick={() => { clearErr(); setMode("forgot"); }}>
-              Forgot password?
-            </button>
-          </div>
-        </>
-      )}
+  const [tab, setTab]                           = useState("home");
+  const [homeBusinesses, setHomeBusinesses]     = useState([]);
+  const [selectedBusiness, setSelectedBusiness] = useState(null);
+  const [showUploadFlow, setShowUploadFlow]     = useState(false);
+  const [selectedInstruction, setSelectedInstruction] = useState(null); // { instructionId, businessId }
+  const [guestShowExit, setGuestShowExit]       = useState(false);
+  const homeScrollOffsetRef = useRef(0);
 
-      <button
-        className="auth-btn"
-        onClick={mode === "register" ? handleSubscribe : handleLogin}
-        disabled={isLoading}
-        onKeyDown={(e) => e.key === "Enter" && (mode === "register" ? handleSubscribe() : handleLogin())}
-      >
-        {isLoading
-          ? <span className="auth-spinner" />
-          : mode === "register"
-            ? (estimatedMonthlyCost > 0 ? "Get Started" : "Get Started")
-            : "Sign In"
+  // ── Share-link state ─────────────────────────────────────────────────────
+  // status: 'idle' | 'loading' | 'ready' | 'done' | 'error'
+  // 'done' means "a share business was folded into selectedBusiness" — kept
+  // distinct from 'idle' on purpose (see effect #2b below) so that finishing
+  // the fold-in doesn't itself look like "no share flow ever happened" and
+  // re-trigger the plain login/logout reset.
+  const [shareStatus, setShareStatus] = useState("idle");
+  const [shareBusiness, setShareBusinessState] = useState(null);
+  const [shareToken, setShareToken] = useState(null);
+  const [shareError, setShareError] = useState(null);
+  const guestLoginAttempted = useRef(false);
+  // Tracks the last user id we ran the "login/logout reset" for, so that
+  // effect #2b only fires on an actual identity change — not on every
+  // shareStatus/shareBusiness tick coming out of effect #2a.
+  const prevUserIdRef = useRef(undefined);
+  const paymentReturnHandled = useRef(false);
+
+  // ── Browser back/forward support ─────────────────────────────────────────
+  // This app has no router — it's one component that swaps screens via
+  // local state. That means the phone/browser back button has nothing to
+  // "undo" and just leaves the site. To fix that without a rewrite, every
+  // forward navigation (select a business, open an instruction, switch tabs,
+  // start an upload) pushes a history entry carrying the state needed to
+  // restore the screen; every "back" action in the UI calls
+  // window.history.back() instead of resetting state directly, so the
+  // physical back button and the in-app back button both go through the
+  // same popstate handler and can never drift out of sync.
+  const isRestoringFromPopRef = useRef(false);
+
+  // 0) Detect a #/payment-success hash from Stripe Checkout returning here.
+  //    Runs once, independent of auth/user state — the AuthScreen (rendered
+  //    below whenever !user) reads mode/otpContext off the same AuthContext
+  //    instance, so setting them here is enough for it to land on the
+  //    "Set Your Password" screen without any prop drilling.
+  useEffect(() => {
+    if (paymentReturnHandled.current) return;
+    if (!window.location.hash.startsWith("#/payment-success")) return;
+    paymentReturnHandled.current = true;
+
+    completePaymentReturn();
+    clearShareHash(); // reuses the same hash-clearing helper, name aside
+  }, [completePaymentReturn]);
+
+  // 1) On first load, detect a #/share/:token hash — try to hand off to the
+  //    installed app, then fall back to fetching a public preview here.
+  //    Falls back to a sessionStorage-remembered token if the hash itself
+  //    is missing (e.g. after the guest-login reload), so the flow can
+  //    recover instead of dead-ending.
+  useEffect(() => {
+    const hashMatch = window.location.hash.match(/^#\/share\/([^/?]+)/);
+    const pendingToken = sessionStorage.getItem(SHARE_PENDING_TOKEN_KEY);
+    const token = hashMatch ? hashMatch[1] : pendingToken;
+    if (!token) return;
+
+    sessionStorage.setItem(SHARE_PENDING_TOKEN_KEY, token);
+    setShareToken(token);
+    setShareStatus("loading");
+
+    // Only attempt the app hand-off once per token per browser session — if
+    // we already tried (e.g. this is the reload right after guest sign-in),
+    // skip straight to fetching the preview with no artificial delay.
+    const alreadyAttempted = sessionStorage.getItem(SHARE_DEEPLINK_ATTEMPTED_KEY) === token;
+    if (!alreadyAttempted) {
+      sessionStorage.setItem(SHARE_DEEPLINK_ATTEMPTED_KEY, token);
+      window.location.href = `cns://share/${token}`;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(API_ENDPOINTS.SHARE_RESOLVE(token));
+        const data = await res.json();
+        if (!res.ok || !data.valid) {
+          setShareError(data.message || "This link has expired.");
+          setShareStatus("error");
+          clearShareSessionKeys();
+          return;
         }
-      </button>
-      <button
-        className="auth-toggle-btn"
-        onClick={() => { clearErr(); setMode(mode === "register" ? "login" : "register"); }}
-      >
-        {mode === "register"
-          ? "Already on board? Sign In"
-          : "New company? Get your drivers set up in minutes"}
-      </button>
-    </>
-  );
+        const business = data.businessId
+          ? { _id: data.businessId, id: data.businessId, ...data.business }
+          : { placeId: data.placeId, ...data.business };
+        setShareBusinessState(business);
+        setShareStatus("ready");
+      } catch (_) {
+        setShareError("Something went wrong loading this link.");
+        setShareStatus("error");
+        clearShareSessionKeys();
+      }
+    }, alreadyAttempted ? 0 : 1500);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 2a) Fold a resolved share business into state once we have a user.
+  //     Split out from the reset effect below on purpose: this effect writes
+  //     shareStatus, and if the reset effect also depended on shareStatus
+  //     and treated "not ready" as "reset", the two would ping-pong —
+  //     fold in, re-render, reset effect sees shareStatus change and wipes
+  //     selectedBusiness right back out. Setting shareStatus to "done"
+  //     (instead of "idle") plus gating the reset on user-id change instead
+  //     of on shareStatus removes that loop entirely.
+  useEffect(() => {
+    if (isLoading) return;
+    if (!(user && shareStatus === "ready" && shareBusiness)) return;
+
+    setSelectedBusiness(shareBusiness);
+    setShareStatus("done");
+    setShareBusinessState(null);
+    // Real users have the whole site to fall back on, so it's safe (and
+    // nicer) to clean up the URL/session once they're folded in. Guests
+    // have nothing else to fall back on — keeping the hash + pending
+    // token alive is what lets a refresh recover the same business
+    // instead of dead-ending on "session ended".
+    if (!user.isGuest) {
+      clearShareHash();
+      clearShareSessionKeys();
+    }
+  }, [user, isLoading, shareStatus, shareBusiness]);
+
+  // 2b) Normal reset on an actual login/logout/user-switch. Gated on
+  //     user?._id changing (via prevUserIdRef) rather than on shareStatus,
+  //     so it no longer re-fires as a side effect of 2a completing. Still
+  //     skips the reset while a share flow is actively resolving, so it
+  //     doesn't stomp on a business that's about to be folded in.
+  useEffect(() => {
+    if (isLoading) return;
+
+    const currentUserId = user?._id ?? null;
+    if (prevUserIdRef.current === currentUserId) return;
+    prevUserIdRef.current = currentUserId;
+
+    if (shareStatus === "loading" || shareStatus === "ready") return;
+
+    setTab("home");
+    setSelectedBusiness(null);
+    setShowUploadFlow(false);
+    setSelectedInstruction(null);
+    setGuestShowExit(false);
+  }, [user, isLoading, shareStatus]);
+
+  // 3) If the visitor is NOT logged in, silently sign them in as a guest
+  //    scoped to this specific link (view/edit/upload all just work
+  //    afterward, since every screen only checks for a valid token).
+  //    setSession populates auth state directly from the guest-login
+  //    response — no page reload and no extra AUTH_ME round-trip needed,
+  //    since the endpoint already returns both the token and the user.
+  //    Once `user` is set here, effect #2a picks up on the very next
+  //    render and folds shareBusiness straight into selectedBusiness.
+  useEffect(() => {
+    if (isLoading) return;
+    if (user) return; // handled by effect #2a above
+    if (shareStatus !== "ready" || !shareBusiness || !shareToken) return;
+    if (guestLoginAttempted.current) return;
+    guestLoginAttempted.current = true;
+
+    (async () => {
+      try {
+        const res = await fetch(API_ENDPOINTS.SHARE_GUEST_LOGIN(shareToken), { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Could not open this link.");
+        setSession(data.token, data.user);
+      } catch (err) {
+        setShareError(err.message || "Could not open this link.");
+        setShareStatus("error");
+        clearShareSessionKeys();
+        guestLoginAttempted.current = false;
+      }
+    })();
+  }, [isLoading, user, shareStatus, shareBusiness, shareToken, setSession]);
+
+  // ── Load cached businesses from localStorage on start ──
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("home_businesses_v2");
+      if (raw) {
+        const { data, timestamp } = JSON.parse(raw);
+        const TEN_MINUTES = 10 * 60 * 1000;
+        if (Date.now() - timestamp < TEN_MINUTES) setHomeBusinesses(data);
+      }
+    } catch (_) {}
+  }, []);
+
+  // ── Browser back/forward: establish a baseline history entry ──────────────
+  // Runs once on mount so the very first pushNav() call has something to
+  // fall back to when the user hits back.
+  useEffect(() => {
+    if (!window.history.state) {
+      window.history.replaceState(
+        { tab: "home", selectedBusiness: null, showUploadFlow: false, selectedInstruction: null, guestShowExit: false },
+        "",
+        window.location.pathname + window.location.hash
+      );
+    }
+  }, []);
+
+  // ── Browser back/forward: restore state when the user navigates history ──
+  useEffect(() => {
+    const onPopState = (event) => {
+      if (!event.state) return; // nothing we tracked (e.g. pre-existing entry) — leave as-is
+      isRestoringFromPopRef.current = true;
+      setTab(event.state.tab ?? "home");
+      setSelectedBusiness(event.state.selectedBusiness ?? null);
+      setShowUploadFlow(!!event.state.showUploadFlow);
+      setSelectedInstruction(event.state.selectedInstruction ?? null);
+      setGuestShowExit(!!event.state.guestShowExit);
+      // Release the guard after this render so the next *user-initiated*
+      // navigation is free to push again.
+      setTimeout(() => { isRestoringFromPopRef.current = false; }, 0);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  // Pushes a new history entry carrying the full screen state (current
+  // values plus whatever this navigation changes), so a later back/forward
+  // can restore it exactly. Skipped while we're mid-restore from a popstate,
+  // so replaying history never pushes a duplicate entry.
+  const pushNav = (overrides, path) => {
+    if (isRestoringFromPopRef.current) return;
+    const state = {
+      tab, selectedBusiness, showUploadFlow, selectedInstruction, guestShowExit,
+      ...overrides,
+    };
+    window.history.pushState(state, "", path || (window.location.pathname + window.location.hash));
+  };
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  const handleNavigate = (business) => {
+    pushNav({ selectedBusiness: business }, `/business/${business?._id || business?.id || business?.placeId || ""}`);
+    setSelectedBusiness(business);
+  };
+  const handleSearchPress = () => {
+    pushNav({ tab: "search" }, "/search");
+    setTab("search");
+  };
+  const handleProfilePress = () => {
+    pushNav({ tab: "profile" }, "/profile");
+    setTab("profile");
+  };
+  const handleBusinessSelect = (business) => {
+    pushNav({ selectedBusiness: business }, `/business/${business?._id || business?.id || business?.placeId || ""}`);
+    setSelectedBusiness(business);
+  };
+
+  const handleTabChange = (newTab) => {
+    if (newTab === "add") {
+      pushNav({ showUploadFlow: true }, "/add");
+      setShowUploadFlow(true);
+    } else {
+      pushNav(
+        { tab: newTab, selectedBusiness: null, showUploadFlow: false, selectedInstruction: null },
+        newTab === "home" ? "/" : `/${newTab}`
+      );
+      setTab(newTab);
+      setSelectedBusiness(null);
+      setShowUploadFlow(false);
+      setSelectedInstruction(null);
+    }
+  };
+
+  const handleUploadComplete = (resolvedBusiness) => {
+    if (resolvedBusiness?._id || resolvedBusiness?.id) {
+      pushNav(
+        { showUploadFlow: false, selectedBusiness: resolvedBusiness },
+        `/business/${resolvedBusiness._id || resolvedBusiness.id}`
+      );
+      setSelectedBusiness(resolvedBusiness);
+    } else {
+      pushNav({ showUploadFlow: false, tab: "home" }, "/");
+      setTab("home");
+    }
+    setShowUploadFlow(false);
+  };
+
+  const handleGlobalBusinessClaimed = (newId, originalBusiness) => {
+    const updated = { ...originalBusiness, _id: newId, id: newId, placeId: undefined };
+    // Same screen depth as before (still the business detail view, just a
+    // new id) — replace the current entry instead of pushing a new one.
+    window.history.replaceState(
+      { tab, selectedBusiness: updated, showUploadFlow, selectedInstruction, guestShowExit },
+      "",
+      `/business/${newId}`
+    );
+    setSelectedBusiness(updated);
+  };
+
+  const handleViewInstruction = (instructionId, businessId) => {
+    pushNav({ selectedInstruction: { instructionId, businessId } }, `/business/${businessId}/instruction/${instructionId}`);
+    setSelectedInstruction({ instructionId, businessId });
+  };
+
+  const handleBackFromInstruction = () => {
+    window.history.back();
+  };
+
+  const handleViewComments = (instructionId) => {
+    // TODO: build CommentsScreen and wire up here
+    console.log("View comments:", instructionId);
+  };
+
+  // ── Share-link loading / error states — take priority over everything ─────
+  // Covers both "resolving the link" and "signing the guest in" — these used
+  // to be two visibly different screens because guest sign-in triggered a
+  // full page reload; now it's all in-memory, so one steady message spans
+  // the whole thing instead of flashing between two.
+  if (shareStatus === "loading" || (shareStatus === "ready" && !user && !isLoading)) {
+    return (
+      <CenteredMessage>
+        <Spinner />
+        <p style={{ color: "#6b7280", margin: 0 }}>Opening business…</p>
+      </CenteredMessage>
+    );
+  }
+
+  if (shareStatus === "error") {
+    return (
+      <CenteredMessage>
+        <p style={{ color: "#b91c1c", margin: 0, fontWeight: 600 }}>{shareError}</p>
+        <button
+          onClick={() => { setShareStatus("idle"); clearShareHash(); clearShareSessionKeys(); }}
+          style={{
+            marginTop: 8, padding: "10px 24px", backgroundColor: "#2563eb",
+            color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer",
+          }}
+        >
+          Go to CNS
+        </button>
+      </CenteredMessage>
+    );
+  }
+
+  // ── Loading splash (auth) ──────────────────────────────────────────────────
+  if (isLoading) {
+    return (
+      <CenteredMessage>
+        <Spinner />
+        <p style={{ color: "#6b7280", margin: 0 }}>Loading…</p>
+      </CenteredMessage>
+    );
+  }
+
+  // ── Not logged in (and no share link in play) ──────────────────────────────
+  if (!user) return <AuthScreen />;
+
+  // ── Guest (share-link) sessions get a locked-down experience: only their
+  //    claimed business, its instructions, and nothing else — no navbar,
+  //    no other tabs, no way to browse the rest of the app.
+  if (isGuestUser) {
+    let guestContent;
+
+    if (guestShowExit) {
+      guestContent = (
+        <GuestExitScreen
+          businessName={selectedBusiness?.name}
+          onReturnToBusiness={() => window.history.back()}
+        />
+      );
+    } else if (selectedInstruction) {
+      guestContent = (
+        <InstructionDetailScreen
+          instructionId={selectedInstruction.instructionId}
+          businessId={selectedInstruction.businessId}
+          onBack={handleBackFromInstruction}
+        />
+      );
+    } else if (showUploadFlow) {
+      guestContent = (
+        <UploadFlowScreen
+          onBack={() => window.history.back()}
+          onComplete={handleUploadComplete}
+          initialBusiness={selectedBusiness}
+        />
+      );
+    } else if (selectedBusiness) {
+      guestContent = (
+        <BusinessDetailScreen
+          business={selectedBusiness}
+          onBack={() => { pushNav({ guestShowExit: true }); setGuestShowExit(true); }}
+          onAddInstructions={() => { pushNav({ showUploadFlow: true }, "/add"); setShowUploadFlow(true); }}
+          onViewInstruction={handleViewInstruction}
+          onViewComments={handleViewComments}
+          onGlobalClaimed={handleGlobalBusinessClaimed}
+        />
+      );
+    } else if (shareStatus === "loading" || shareStatus === "ready") {
+      // Fold-in is still in flight (e.g. auth just resolved a beat before
+      // the share-resolve fetch did) — show a spinner instead of bailing
+      // out to "session ended" while effect #2a catches up.
+      guestContent = (
+        <CenteredMessage>
+          <Spinner />
+          <p style={{ color: "#6b7280", margin: 0 }}>Loading…</p>
+        </CenteredMessage>
+      );
+    } else {
+      // No business in hand and no share flow running at all — e.g. a
+      // guest refreshed the page with no token recoverable from the hash
+      // or sessionStorage.
+      guestContent = (
+        <CenteredMessage>
+          <p style={{ color: "#374151", margin: 0, fontWeight: 600 }}>This shared link session has ended.</p>
+          <button
+            onClick={exitGuestSession}
+            style={{ marginTop: 8, padding: "10px 20px", backgroundColor: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}
+          >
+            Go to CNS
+          </button>
+        </CenteredMessage>
+      );
+    }
+
+    return <div style={{ minHeight: "100vh", backgroundColor: "#f9fafb" }}>{guestContent}</div>;
+  }
+
+  // ── Pick the active screen (real, non-guest users) ─────────────────────────
+  let screenContent;
+
+  // Instruction detail — highest priority overlay
+  if (selectedInstruction) {
+    screenContent = (
+      <InstructionDetailScreen
+        instructionId={selectedInstruction.instructionId}
+        businessId={selectedInstruction.businessId}
+        onBack={handleBackFromInstruction}
+      />
+    );
+  } else if (showUploadFlow) {
+    screenContent = (
+      <UploadFlowScreen
+        onBack={() => window.history.back()}
+        onComplete={handleUploadComplete}
+        initialBusiness={selectedBusiness}
+      />
+    );
+  } else if (selectedBusiness) {
+    screenContent = (
+      <BusinessDetailScreen
+        business={selectedBusiness}
+        onBack={() => window.history.back()}
+        onAddInstructions={() => { pushNav({ showUploadFlow: true }, "/add"); setShowUploadFlow(true); }}
+        onViewInstruction={handleViewInstruction}
+        onViewComments={handleViewComments}
+        onGlobalClaimed={handleGlobalBusinessClaimed}
+      />
+    );
+  } else {
+    switch (tab) {
+      case "search":
+        screenContent = (
+          <SearchScreen
+            onBusinessSelect={handleBusinessSelect}
+            onBack={() => window.history.back()}
+          />
+        );
+        break;
+      case "community":
+        screenContent = <CommunityScreen onBack={() => window.history.back()} />;
+        break;
+      case "profile":
+        screenContent = <ProfileScreen onBack={() => window.history.back()} />;
+        break;
+      default: // "home"
+        screenContent = (
+          <HomeScreen
+            onNavigate={handleNavigate}
+            onSearchPress={handleSearchPress}
+            onProfilePress={handleProfilePress}
+            onContributePress={() => handleTabChange("add")}
+            businesses={homeBusinesses}
+            setBusinesses={setHomeBusinesses}
+            scrollOffsetRef={homeScrollOffsetRef}
+          />
+        );
+    }
+  }
+
+  // Hide navbar when any overlay is active
+  const showNavBar = !showUploadFlow && !selectedBusiness && !selectedInstruction;
 
   return (
-    <div className="auth-root">
-      <div className="auth-inner">
-        <div className="auth-header">
-          <MapPin size={56} color="#2563eb" />
-          <h1 className="auth-app-title">CNS</h1>
-          <p className="auth-app-subtitle">Smarter deliveries, powered by drivers like you</p>
-        </div>
-
-        <div className="auth-card">
-          {mode === "forgot" && renderForgot()}
-          {mode === "otp"    && renderOtp()}
-          {(mode === "login" || mode === "register") && renderLoginRegister()}
-        </div>
-      </div>
+    <div key={user?._id || "logged-out"} style={{ display: "flex", flexDirection: "column", minHeight: "100vh", backgroundColor: "#f9fafb" }}>
+      <main style={{ flex: 1, paddingBottom: showNavBar ? 72 : 0 }}>
+        {screenContent}
+      </main>
+      {showNavBar && <NavBar active={tab} onChange={handleTabChange} />}
     </div>
+  );
+}
+
+// ── Root ───────────────────────────────────────────────────────────────────────
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppInner />
+    </AuthProvider>
   );
 }
