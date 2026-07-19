@@ -266,6 +266,9 @@ export default function AuthScreen() {
               autoComplete="email"
             />
           </div>
+          <p className="auth-field-hint">
+            This is your shared login — all of your drivers will sign in with this one email and password.
+          </p>
           <div className="auth-input-row">
             <UserIcon size={20} color="#6b7280" />
             <input
