@@ -89,7 +89,13 @@ export default function AuthScreen() {
     const count = parseInt(driverCount, 10);
     if (isNaN(count) || count <= 0) return showErr("Please enter a valid number of drivers.");
     const err = await startCheckout({ companyName, companyEmail, driverCount: count });
-    if (err) showErr(err);
+    if (err) {
+      // Surface this as a browser alert (mirrors mobile's Alert.alert
+      // "Checkout Failed") so an "account already exists" response from the
+      // backend isn't missed as a small inline error box.
+      window.alert(err);
+      showErr(err);
+    }
   };
 
   const handleForgotPassword = async () => {
@@ -129,8 +135,10 @@ export default function AuthScreen() {
         <ArrowLeft size={18} color="#2563eb" />
         <span>Back to Sign In</span>
       </button>
-      <h2 className="auth-form-title">Forgot Password</h2>
-      <p className="auth-sub-text">Enter your email and we'll send you a 6-digit reset code.</p>
+      <h2 className="auth-form-title">Forgot Password?</h2>
+      <p className="auth-sub-text">
+        No worries — enter your email and we'll send you a 6-digit code to get you back in.
+      </p>
       {displayError && <div className="auth-error-box">{displayError}</div>}
       <div className="auth-input-row">
         <Mail size={20} color="#6b7280" />
@@ -160,7 +168,7 @@ export default function AuthScreen() {
         <span>Back</span>
       </button>
       <h2 className="auth-form-title">
-        {otpContext === "welcome" ? "Set Your Password" : "Enter Reset Code"}
+        {otpContext === "welcome" ? "Almost There!" : "Enter Reset Code"}
       </h2>
       {otpSent && (
         <div className="auth-success-box">
@@ -172,8 +180,8 @@ export default function AuthScreen() {
       )}
       <p className="auth-sub-text">
         {otpContext === "welcome"
-          ? "Payment received! Enter the code we emailed you and choose your password."
-          : "Enter the 6-digit code and choose a new password."}
+          ? "You're in! Enter the code we just emailed you and set a password to start navigating smarter deliveries today."
+          : "Enter the 6-digit code below and choose a new password."}
       </p>
       {displayError && <div className="auth-error-box">{displayError}</div>}
       <div className="auth-input-row auth-otp-row">
@@ -209,7 +217,7 @@ export default function AuthScreen() {
         />
       </div>
       <button className="auth-btn" onClick={handleResetPassword} disabled={isLoading}>
-        {isLoading ? <span className="auth-spinner" /> : (otpContext === "welcome" ? "Set Password" : "Reset Password")}
+        {isLoading ? <span className="auth-spinner" /> : (otpContext === "welcome" ? "Set Password & Continue" : "Reset Password")}
       </button>
       <div className="auth-resend-row">
         <span className="auth-resend-text">Didn't receive a code? </span>
@@ -224,7 +232,7 @@ export default function AuthScreen() {
   const renderLoginRegister = () => (
     <>
       <h2 className="auth-form-title">
-        {mode === "register" ? "Subscribe Your Company" : "Welcome Back"}
+        {mode === "register" ? "Get Your Fleet Moving" : "Welcome Back"}
       </h2>
       {displayError && <div className="auth-error-box">{displayError}</div>}
 
@@ -234,8 +242,8 @@ export default function AuthScreen() {
             {priceLoading
               ? "Loading pricing..."
               : unitPrice !== null
-              ? `${formatMoney(unitPrice)} per driver / month — cancel anytime.`
-              : "Per-driver monthly subscription — cancel anytime."}
+              ? `Just ${formatMoney(unitPrice)} per driver, per month. Cancel anytime — no contracts, no hidden fees.`
+              : "Simple per-driver pricing. Cancel anytime — no contracts, no hassle."}
           </p>
           <div className="auth-input-row">
             <UserIcon size={20} color="#6b7280" />
@@ -317,7 +325,7 @@ export default function AuthScreen() {
         {isLoading
           ? <span className="auth-spinner" />
           : mode === "register"
-            ? (estimatedMonthlyCost > 0 ? `Subscribe – ${formatMoney(estimatedMonthlyCost)}/mo` : "Subscribe")
+            ? (estimatedMonthlyCost > 0 ? `Get Started – ${formatMoney(estimatedMonthlyCost)}/mo` : "Get Started")
             : "Sign In"
         }
       </button>
@@ -326,8 +334,8 @@ export default function AuthScreen() {
         onClick={() => { clearErr(); setMode(mode === "register" ? "login" : "register"); }}
       >
         {mode === "register"
-          ? "Already have an account? Sign In"
-          : "New company? Subscribe"}
+          ? "Already on board? Sign In"
+          : "New company? Get your drivers set up in minutes"}
       </button>
     </>
   );
@@ -338,7 +346,7 @@ export default function AuthScreen() {
         <div className="auth-header">
           <MapPin size={56} color="#2563eb" />
           <h1 className="auth-app-title">CNS</h1>
-          <p className="auth-app-subtitle">Community powered delivery guides</p>
+          <p className="auth-app-subtitle">Smarter deliveries, powered by drivers like you</p>
         </div>
 
         <div className="auth-card">
