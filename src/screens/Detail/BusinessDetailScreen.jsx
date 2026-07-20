@@ -136,11 +136,10 @@ const GlobalBusinessScreen = ({
   const [showMap, setShowMap] = useState(false);
   const [claimedLocalId, setClaimedLocalId] = useState(null);
 
-  useEffect(() => {
-    const handler = () => onBack();
-    window.addEventListener("popstate", handler);
-    return () => window.removeEventListener("popstate", handler);
-  }, [onBack]);
+  // Note: browser Back-button handling is centralized in App.js (a single
+  // popstate listener there resets navigation to home/root). This screen no
+  // longer listens for popstate itself — doing so here as well would fire
+  // alongside App.js's handler on the same event and cause double navigation.
 
   if (claimedLocalId) {
     const upgradedBusiness = { ...business, _id: claimedLocalId, id: claimedLocalId, placeId: undefined };
@@ -366,11 +365,10 @@ function BusinessDetailContent({
     [business.id, business._id],
   );
 
-  useEffect(() => {
-    const handler = () => onBack();
-    window.addEventListener("popstate", handler);
-    return () => window.removeEventListener("popstate", handler);
-  }, [onBack]);
+  // Note: browser Back-button handling is centralized in App.js (a single
+  // popstate listener there resets navigation to home/root). This screen no
+  // longer listens for popstate itself — doing so here as well would fire
+  // alongside App.js's handler on the same event and cause double navigation.
 
   useEffect(() => {
     if (!businessId) { setError("Invalid business ID"); setLoading(false); return; }

@@ -118,6 +118,52 @@ function AppInner() {
   const [guestShowExit, setGuestShowExit]       = useState(false);
   const homeScrollOffsetRef = useRef(0);
 
+  // ── Browser back-button handling ─────────────────────────────────────────
+  // The app never touches browser history — every screen change is just
+  // React state — so by default the Back button has nothing local to undo
+  // and immediately exits the site. Fix: every time we navigate away from
+  // "home" (or, for a guest, away from their one business), push a single
+  // history entry. That gives Back something to consume first. The
+  // popstate handler below is intentionally simple — ANY back press resets
+  // all the way to home/root, rather than trying to replicate a full
+  // per-screen history stack.
+  const pushedAwayFromRootRef = useRef(false);
+
+  useEffect(() => {
+    if (isLoading || !user) return;
+
+    const isAwayFromRoot = isGuestUser
+      ? (guestShowExit || !!selectedInstruction || showUploadFlow)
+      : (tab !== "home" || !!selectedBusiness || showUploadFlow || !!selectedInstruction);
+
+    if (isAwayFromRoot && !pushedAwayFromRootRef.current) {
+      window.history.pushState({ cnsNav: true }, "");
+      pushedAwayFromRootRef.current = true;
+    } else if (!isAwayFromRoot) {
+      pushedAwayFromRootRef.current = false;
+    }
+  }, [isLoading, user, isGuestUser, tab, selectedBusiness, showUploadFlow, selectedInstruction, guestShowExit]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      pushedAwayFromRootRef.current = false;
+      if (isGuestUser) {
+        // Guests have no "home" — their one business is the root.
+        setGuestShowExit(false);
+        setSelectedInstruction(null);
+        setShowUploadFlow(false);
+      } else {
+        setTab("home");
+        setSelectedBusiness(null);
+        setShowUploadFlow(false);
+        setSelectedInstruction(null);
+        setGuestShowExit(false);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [isGuestUser]);
+
   // ── Share-link state ─────────────────────────────────────────────────────
   // status: 'idle' | 'loading' | 'ready' | 'done' | 'error'
   // 'done' means "a share business was folded into selectedBusiness" — kept
