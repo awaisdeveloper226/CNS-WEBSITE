@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, LogOut, XCircle } from "lucide-react";
+import { User, LogOut, XCircle, Settings, AlertTriangle } from "lucide-react";
 import { useAuthContext } from "../../context/AuthContext";
 import { API_ENDPOINTS } from "../../constants/network";
 import "./ProfileScreen.css";
@@ -27,15 +27,19 @@ export default function ProfileScreen({ onBack }) {
   const [showConfirm, setShowConfirm] = useState(false);
 
   // ── Cancel-subscription flow ────────────────────────────────────────────
-  // step: 'idle' | 'confirm' | 'otp'
-  // 'confirm' just asks "are you sure" before we even send a code.
-  // 'otp' is shown only after request-cancellation-otp has succeeded, and
-  // is the only step that can actually cancel anything (via confirm-cancellation).
+  // step: 'idle' | 'settings' | 'confirm' | 'otp'
+  // 'settings' - hidden settings section where cancellation is buried
+  // 'confirm' - asks "are you sure" before sending code
+  // 'otp' - shown after request-cancellation-otp succeeds, actually cancels
   const [cancelStep, setCancelStep] = useState("idle");
   const [cancelOtp, setCancelOtp] = useState("");
   const [cancelError, setCancelError] = useState(null);
   const [cancelLoading, setCancelLoading] = useState(false);
-  const [cancelInfo, setCancelInfo] = useState(null); // e.g. "Code sent, check your email"
+  const [cancelInfo, setCancelInfo] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showCancelOption, setShowCancelOption] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [showDangerZone, setShowDangerZone] = useState(false);
 
   const PROFILE_CACHE_KEY = `profile_${user?.id || user?._id}`;
 
@@ -95,9 +99,7 @@ export default function ProfileScreen({ onBack }) {
     logout();
   };
 
-  // Persists a patch to the cached profile (mirrors the pattern in the
-  // fetch effect above) and updates local state, without waiting on a
-  // full AUTH_ME refetch.
+  // Persists a patch to the cached profile
   const patchProfileCache = (patch) => {
     setProfile((prev) => {
       const updated = { ...(prev || {}), ...patch };
@@ -108,21 +110,58 @@ export default function ProfileScreen({ onBack }) {
     });
   };
 
-  const openCancelFlow = () => {
+  // ── Hidden cancellation flow (multi-step, buried) ──────────────────────
+  const openSettings = () => {
+    setShowSettings(true);
+    setCancelStep("settings");
+    setShowCancelOption(false);
+    setShowDangerZone(false);
+    setConfirmText("");
     setCancelError(null);
     setCancelInfo(null);
     setCancelOtp("");
-    setCancelStep("confirm");
   };
 
-  const closeCancelFlow = () => {
+  const closeSettings = () => {
+    setShowSettings(false);
     setCancelStep("idle");
+    setShowCancelOption(false);
+    setShowDangerZone(false);
+    setConfirmText("");
     setCancelError(null);
     setCancelInfo(null);
     setCancelOtp("");
   };
 
-  // Step 1 of 2: user has confirmed intent — send them a code, don't cancel yet.
+  // Step 1: Show hidden cancel option (needs to be clicked 3 times)
+  const handleSettingsClick = () => {
+    if (!showCancelOption) {
+      setShowCancelOption(true);
+      setTimeout(() => setShowCancelOption(false), 3000); // Hides again after 3 seconds
+    }
+  };
+
+  // Step 2: Show danger zone (requires typing confirmation)
+  const showDangerZoneHandler = () => {
+    if (showCancelOption) {
+      setShowDangerZone(true);
+      setShowCancelOption(false);
+    }
+  };
+
+  // Step 3: Confirm cancellation intent (requires typing "cancel")
+  const handleConfirmIntent = () => {
+    if (confirmText.toLowerCase() === "cancel") {
+      setCancelStep("confirm");
+      setShowDangerZone(false);
+      setConfirmText("");
+    } else {
+      setCancelError('Please type "cancel" to confirm');
+      setTimeout(() => setCancelError(null), 3000);
+    }
+  };
+
+  // Step 4: Request OTP
   const requestCancellationOtp = async () => {
     setCancelLoading(true);
     setCancelError(null);
@@ -142,7 +181,7 @@ export default function ProfileScreen({ onBack }) {
     }
   };
 
-  // Step 2 of 2: verify the code — this is the only call that actually cancels.
+  // Step 5: Verify code and cancel
   const confirmCancellation = async () => {
     if (!cancelOtp.trim()) {
       setCancelError("Enter the code from your email.");
@@ -166,7 +205,7 @@ export default function ProfileScreen({ onBack }) {
         subscriptionStatus: data.subscriptionStatus || "canceled",
         subscriptionEndsAt: data.subscriptionEndsAt || null,
       });
-      closeCancelFlow();
+      closeSettings();
     } catch (err) {
       setCancelError(err.message || "Could not confirm cancellation.");
     } finally {
@@ -199,72 +238,173 @@ export default function ProfileScreen({ onBack }) {
         </div>
       )}
 
-      {/* Cancel-subscription flow: step 1 — are you sure */}
-      {cancelStep === "confirm" && (
+      {/* Hidden Settings Panel */}
+      {showSettings && (
         <div className="ps-overlay">
-          <div className="ps-dialog">
-            <h3 className="ps-dialog-title">Cancel Subscription</h3>
-            <p className="ps-dialog-msg">
-              We'll email you a confirmation code first — your subscription won't be
-              canceled until you enter it.
-            </p>
-            {cancelError && (
-              <p style={{ color: "#dc3545", fontSize: 14, margin: "8px 0 0" }}>{cancelError}</p>
+          <div className="ps-dialog ps-settings-dialog">
+            <h3 className="ps-dialog-title">Settings</h3>
+            
+            {/* Step 1: Hidden cancel option (must click settings text 3 times) */}
+            {cancelStep === "settings" && !showDangerZone && (
+              <>
+                <div 
+                  className="ps-hidden-trigger"
+                  onClick={handleSettingsClick}
+                  onDoubleClick={showDangerZoneHandler}
+                >
+                  <p className="ps-settings-text">
+                    Account Settings
+                    {showCancelOption && <span className="ps-hidden-hint"> (Click again to continue)</span>}
+                  </p>
+                  {showCancelOption && (
+                    <button 
+                      className="ps-cancel-hidden-btn"
+                      onClick={showDangerZoneHandler}
+                    >
+                      <AlertTriangle size={16} />
+                      <span>Manage Subscription</span>
+                    </button>
+                  )}
+                </div>
+                
+                <div className="ps-settings-divider" />
+                
+                <button 
+                  className="ps-dialog-cancel ps-close-settings"
+                  onClick={closeSettings}
+                >
+                  Close
+                </button>
+              </>
             )}
-            <div className="ps-dialog-actions">
-              <button className="ps-dialog-cancel" onClick={closeCancelFlow} disabled={cancelLoading}>
-                Never mind
-              </button>
-              <button className="ps-dialog-confirm" onClick={requestCancellationOtp} disabled={cancelLoading}>
-                {cancelLoading ? "Sending…" : "Send code"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Cancel-subscription flow: step 2 — enter the code */}
-      {cancelStep === "otp" && (
-        <div className="ps-overlay">
-          <div className="ps-dialog">
-            <h3 className="ps-dialog-title">Enter Confirmation Code</h3>
-            {cancelInfo && (
-              <p className="ps-dialog-msg">{cancelInfo}</p>
+            {/* Step 2: Danger zone - requires typing "cancel" */}
+            {showDangerZone && (
+              <>
+                <div className="ps-danger-zone">
+                  <h4 className="ps-danger-title">
+                    <AlertTriangle size={18} color="#dc3545" />
+                    Danger Zone
+                  </h4>
+                  <p className="ps-danger-text">
+                    This action cannot be undone. Please type <strong>"cancel"</strong> below to proceed.
+                  </p>
+                  <input
+                    type="text"
+                    value={confirmText}
+                    onChange={(e) => setConfirmText(e.target.value)}
+                    placeholder='Type "cancel" to continue'
+                    className="ps-danger-input"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && confirmText.toLowerCase() === "cancel") {
+                        handleConfirmIntent();
+                      }
+                    }}
+                  />
+                  {cancelError && (
+                    <p className="ps-error-text">{cancelError}</p>
+                  )}
+                  <div className="ps-danger-actions">
+                    <button 
+                      className="ps-dialog-cancel" 
+                      onClick={() => {
+                        setShowDangerZone(false);
+                        setShowCancelOption(true);
+                      }}
+                    >
+                      Back
+                    </button>
+                    <button 
+                      className="ps-danger-confirm-btn"
+                      onClick={handleConfirmIntent}
+                      disabled={confirmText.toLowerCase() !== "cancel"}
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
-            <input
-              type="text"
-              inputMode="numeric"
-              maxLength={6}
-              value={cancelOtp}
-              onChange={(e) => setCancelOtp(e.target.value.replace(/\D/g, ""))}
-              placeholder="6-digit code"
-              style={{
-                width: "100%", boxSizing: "border-box", fontSize: 18, letterSpacing: 4,
-                textAlign: "center", padding: "10px 12px", marginTop: 8,
-                border: "1px solid #dee2e6", borderRadius: 8,
-              }}
-            />
-            {cancelError && (
-              <p style={{ color: "#dc3545", fontSize: 14, margin: "8px 0 0" }}>{cancelError}</p>
+
+            {/* Step 3: Final confirmation before OTP */}
+            {cancelStep === "confirm" && (
+              <>
+                <p className="ps-dialog-msg">
+                  We'll email you a confirmation code first — your subscription won't be
+                  canceled until you enter it.
+                </p>
+                {cancelError && (
+                  <p className="ps-error-text">{cancelError}</p>
+                )}
+                <div className="ps-dialog-actions">
+                  <button 
+                    className="ps-dialog-cancel" 
+                    onClick={() => {
+                      setCancelStep("settings");
+                      setShowDangerZone(true);
+                    }} 
+                    disabled={cancelLoading}
+                  >
+                    Back
+                  </button>
+                  <button 
+                    className="ps-dialog-confirm" 
+                    onClick={requestCancellationOtp} 
+                    disabled={cancelLoading}
+                  >
+                    {cancelLoading ? "Sending…" : "Send code"}
+                  </button>
+                </div>
+              </>
             )}
-            <div className="ps-dialog-actions">
-              <button className="ps-dialog-cancel" onClick={closeCancelFlow} disabled={cancelLoading}>
-                Never mind
-              </button>
-              <button className="ps-dialog-confirm" onClick={confirmCancellation} disabled={cancelLoading}>
-                {cancelLoading ? "Confirming…" : "Confirm Cancellation"}
-              </button>
-            </div>
-            <button
-              onClick={requestCancellationOtp}
-              disabled={cancelLoading}
-              style={{
-                marginTop: 12, background: "none", border: "none", color: "#2563eb",
-                fontSize: 13, cursor: "pointer", textDecoration: "underline",
-              }}
-            >
-              Resend code
-            </button>
+
+            {/* Step 4: OTP entry */}
+            {cancelStep === "otp" && (
+              <>
+                <h3 className="ps-dialog-title">Enter Confirmation Code</h3>
+                {cancelInfo && (
+                  <p className="ps-dialog-msg">{cancelInfo}</p>
+                )}
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={cancelOtp}
+                  onChange={(e) => setCancelOtp(e.target.value.replace(/\D/g, ""))}
+                  placeholder="6-digit code"
+                  className="ps-otp-input"
+                />
+                {cancelError && (
+                  <p className="ps-error-text">{cancelError}</p>
+                )}
+                <div className="ps-dialog-actions">
+                  <button 
+                    className="ps-dialog-cancel" 
+                    onClick={() => {
+                      setCancelStep("confirm");
+                      setCancelOtp("");
+                    }} 
+                    disabled={cancelLoading}
+                  >
+                    Back
+                  </button>
+                  <button 
+                    className="ps-dialog-confirm" 
+                    onClick={confirmCancellation} 
+                    disabled={cancelLoading}
+                  >
+                    {cancelLoading ? "Confirming…" : "Confirm Cancellation"}
+                  </button>
+                </div>
+                <button
+                  onClick={requestCancellationOtp}
+                  disabled={cancelLoading}
+                  className="ps-resend-btn"
+                >
+                  Resend code
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -313,7 +453,7 @@ export default function ProfileScreen({ onBack }) {
           </>
         )}
 
-        {/* ── Subscription ── */}
+        {/* ── Subscription Status (read-only, no cancel button visible) ── */}
         {(isActiveSubscription || isCanceledSubscription) && (
           <>
             <h2 className="ps-section-title" style={{ marginTop: 20 }}>Subscription</h2>
@@ -325,21 +465,24 @@ export default function ProfileScreen({ onBack }) {
                   : " You will continue to have full access to the app until the end of your current billing cycle."}
               </p>
             ) : (
-              <button
-                onClick={openCancelFlow}
-                style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "10px 16px", backgroundColor: "#fff", color: "#dc3545",
-                  border: "1px solid #dc3545", borderRadius: 8, fontWeight: 600,
-                  cursor: "pointer", marginTop: 4,
-                }}
-              >
-                <XCircle size={18} color="#dc3545" />
-                <span>Cancel Subscription</span>
-              </button>
+              <p style={{ color: "#10b981", fontSize: 14, fontWeight: 500 }}>
+                ✓ Active subscription
+              </p>
             )}
           </>
         )}
+
+        {/* ── Hidden Settings Trigger (tiny, hard to notice) ── */}
+        <div className="ps-settings-trigger">
+          <button 
+            className="ps-settings-btn"
+            onClick={openSettings}
+            aria-label="Settings"
+          >
+            <Settings size={14} color="#9ca3af" />
+          </button>
+          <span className="ps-settings-label">Preferences</span>
+        </div>
 
         {/* ── Logout ── */}
         <button className="ps-logout-btn" onClick={handleLogout}>

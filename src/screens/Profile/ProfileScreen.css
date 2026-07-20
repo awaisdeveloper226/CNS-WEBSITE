@@ -141,6 +141,213 @@
   border: 1px solid #d97706;
 }
 
+/* ── Hidden Settings Trigger ── */
+.ps-settings-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 30px;
+  opacity: 0.3;
+  transition: opacity 0.2s;
+  cursor: pointer;
+}
+
+.ps-settings-trigger:hover {
+  opacity: 0.6;
+}
+
+.ps-settings-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ps-settings-label {
+  font-size: 10px;
+  color: #9ca3af;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* ── Settings Dialog ── */
+.ps-settings-dialog {
+  max-width: 400px !important;
+}
+
+.ps-settings-text {
+  font-size: 14px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 12px;
+  margin: 0;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.ps-settings-text:hover {
+  background: #f3f4f6;
+}
+
+.ps-hidden-hint {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.ps-hidden-trigger {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ps-cancel-hidden-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ps-cancel-hidden-btn:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
+.ps-settings-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 12px 0;
+}
+
+.ps-close-settings {
+  width: 100%;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+/* ── Danger Zone ── */
+.ps-danger-zone {
+  border: 2px solid #fecaca;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fef2f2;
+}
+
+.ps-danger-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #dc2626;
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+}
+
+.ps-danger-text {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0 0 12px 0;
+  line-height: 1.5;
+}
+
+.ps-danger-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+  transition: border-color 0.2s;
+}
+
+.ps-danger-input:focus {
+  outline: none;
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.ps-danger-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.ps-danger-confirm-btn {
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.ps-danger-confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ps-danger-confirm-btn:not(:disabled):hover {
+  background: #b91c1c;
+}
+
+.ps-error-text {
+  color: #dc3545;
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
+/* ── OTP Input ── */
+.ps-otp-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 18px;
+  letter-spacing: 4px;
+  text-align: center;
+  padding: 10px 12px;
+  margin-top: 8px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+}
+
+.ps-otp-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.ps-resend-btn {
+  margin-top: 12px;
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  width: 100%;
+  text-align: center;
+}
+
+.ps-resend-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── Logout button ── */
 .ps-logout-btn {
   display: flex;
@@ -166,7 +373,7 @@
 .ps-logout-btn:active { transform: scale(0.99); }
 .ps-logout-btn:focus-visible { outline: 2px solid #b91c1c; outline-offset: 2px; }
 
-/* ── Confirm dialog (replaces Alert.alert) ── */
+/* ── Confirm dialog ── */
 .ps-overlay {
   position: fixed;
   inset: 0;
@@ -215,6 +422,7 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  transition: background 0.2s;
 }
 .ps-dialog-cancel:hover { background: #e5e7eb; }
 
@@ -227,6 +435,7 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  transition: background 0.2s;
 }
 .ps-dialog-confirm:hover { background: #b91c1c; }
 
