@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeft, Mail } from "lucide-react";
 import "./TermsScreen.css";
 
@@ -258,6 +258,17 @@ function Block({ block }) {
 // ── TermsScreen ───────────────────────────────────────────────────────────
 export default function TermsScreen({ onBack, onPrivacyPress }) {
   const [activeId, setActiveId] = useState(SECTIONS[0].id);
+
+  // This screen is swapped into the same page (no real navigation happens —
+  // App.js just changes `tab`), so the browser keeps whatever scroll
+  // position the previous screen was at. Since the link to get here usually
+  // lives in a footer at the bottom of the page, that means Terms/Privacy
+  // would otherwise render already scrolled to the bottom. Force it back
+  // to the top on mount, and reset the active waypoint to match.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    setActiveId(SECTIONS[0].id);
+  }, []);
 
   const handleWaypointClick = (id) => {
     setActiveId(id);
