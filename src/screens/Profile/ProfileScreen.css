@@ -148,13 +148,13 @@
   justify-content: center;
   gap: 6px;
   margin-top: 30px;
-  opacity: 0.3;
+  opacity: 0.8;
   transition: opacity 0.2s;
   cursor: pointer;
 }
 
 .ps-settings-trigger:hover {
-  opacity: 0.6;
+  opacity: 0.9;
 }
 
 .ps-settings-btn {
