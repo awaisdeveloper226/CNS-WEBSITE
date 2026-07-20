@@ -13,6 +13,13 @@ const getLevelTitle = (level) => {
   return "Rookie Courier";
 };
 
+const formatEndDate = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+};
+
 export default function ProfileScreen({ onBack }) {
   const { user, token, logout } = useAuthContext();
   const [profile, setProfile] = useState(user);
@@ -155,7 +162,10 @@ export default function ProfileScreen({ onBack }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Could not confirm cancellation.");
 
-      patchProfileCache({ subscriptionStatus: data.subscriptionStatus || "canceled" });
+      patchProfileCache({
+        subscriptionStatus: data.subscriptionStatus || "canceled",
+        subscriptionEndsAt: data.subscriptionEndsAt || null,
+      });
       closeCancelFlow();
     } catch (err) {
       setCancelError(err.message || "Could not confirm cancellation.");
@@ -308,7 +318,12 @@ export default function ProfileScreen({ onBack }) {
           <>
             <h2 className="ps-section-title" style={{ marginTop: 20 }}>Subscription</h2>
             {isCanceledSubscription ? (
-              <p style={{ color: "#6b7280", fontSize: 14 }}>Your subscription has been canceled.</p>
+              <p style={{ color: "#6b7280", fontSize: 14 }}>
+                Your subscription has been canceled.
+                {formatEndDate(dp.subscriptionEndsAt)
+                  ? ` You will continue to have full access to the app until the end of your current billing cycle on ${formatEndDate(dp.subscriptionEndsAt)}.`
+                  : " You will continue to have full access to the app until the end of your current billing cycle."}
+              </p>
             ) : (
               <button
                 onClick={openCancelFlow}
