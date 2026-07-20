@@ -655,6 +655,26 @@ export default function UploadFlowScreen({ onBack, onComplete, initialBusiness =
     input.click();
   };
 
+  // Opens the actual device camera (not the gallery/file picker).
+  // The `capture` attribute is what tells mobile browsers to launch the
+  // camera app directly instead of the generic file chooser. Desktop
+  // browsers without a camera will just fall back to file selection.
+  const handleCameraCapture = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.capture = "environment"; // "environment" = rear camera, "user" = front camera
+    input.onchange = async (e) => {
+      const files = Array.from(e.target.files);
+      files.forEach(file => {
+        const localUrl = URL.createObjectURL(file);
+        const key = `ph_${Date.now()}_${Math.random()}`;
+        setMediaItems(prev => [...prev, { url: localUrl, localUri: localUrl, type: "image", uploading: false, _key: key }]);
+      });
+    };
+    input.click();
+  };
+
   const handleVideoUpload = () => {
     const input = document.createElement("input");
     input.type = "file"; input.accept = "video/*";
@@ -763,7 +783,7 @@ export default function UploadFlowScreen({ onBack, onComplete, initialBusiness =
                 <Icons.Camera size={18} color="#6b7280" />
                 Gallery
               </button>
-              <button className="media-btn" onClick={handlePhotoUpload}>
+              <button className="media-btn" onClick={handleCameraCapture}>
                 <Icons.Camera size={18} color="#6b7280" />
                 Camera
               </button>
