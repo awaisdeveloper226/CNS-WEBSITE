@@ -1,6 +1,7 @@
 // src/hooks/useAuth.js
 import { useState, useEffect } from "react";
 import { API_ENDPOINTS, AUTH_TOKEN_KEY } from "../constants/network";
+import { getDeviceInfo } from "../utils/deviceId";
 
 const useAuth = () => {
   const [authState, setAuthState] = useState({
@@ -61,7 +62,7 @@ const useAuth = () => {
       const res = await fetch(API_ENDPOINTS.AUTH_LOGIN, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(credentials),
+        body: JSON.stringify({ ...credentials, ...getDeviceInfo() }),
       });
       const responseText = await res.text();
       let data;
