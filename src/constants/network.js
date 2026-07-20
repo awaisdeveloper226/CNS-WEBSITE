@@ -38,6 +38,9 @@ export const API_ENDPOINTS = {
   PAYMENT_CREATE_CHECKOUT: `${API_BASE_URL}/payments/create-checkout-session`,
   PAYMENT_UPDATE_DRIVER_COUNT: `${API_BASE_URL}/payments/update-driver-count`,
 
+  REQUEST_CANCELLATION_OTP: `${API_BASE_URL}/api/payments/request-cancellation-otp`,
+  CONFIRM_CANCELLATION: `${API_BASE_URL}/api/payments/confirm-cancellation`,
+
   BUSINESS_FROM_GLOBAL: `${API_BASE_URL}/businesses/from-global`,
 
   ENTRY_PIN: (id) => `${API_BASE_URL}/businesses/${id}/entry-pin`,

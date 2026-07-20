@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, LogOut } from "lucide-react";
+import { User, LogOut, XCircle } from "lucide-react";
 import { useAuthContext } from "../../context/AuthContext";
 import { API_ENDPOINTS } from "../../constants/network";
 import "./ProfileScreen.css";
@@ -18,6 +18,17 @@ export default function ProfileScreen({ onBack }) {
   const [profile, setProfile] = useState(user);
   const [error, setError]     = useState(null);
   const [showConfirm, setShowConfirm] = useState(false);
+
+  // ── Cancel-subscription flow ────────────────────────────────────────────
+  // step: 'idle' | 'confirm' | 'otp'
+  // 'confirm' just asks "are you sure" before we even send a code.
+  // 'otp' is shown only after request-cancellation-otp has succeeded, and
+  // is the only step that can actually cancel anything (via confirm-cancellation).
+  const [cancelStep, setCancelStep] = useState("idle");
+  const [cancelOtp, setCancelOtp] = useState("");
+  const [cancelError, setCancelError] = useState(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelInfo, setCancelInfo] = useState(null); // e.g. "Code sent, check your email"
 
   const PROFILE_CACHE_KEY = `profile_${user?.id || user?._id}`;
 
@@ -77,11 +88,89 @@ export default function ProfileScreen({ onBack }) {
     logout();
   };
 
+  // Persists a patch to the cached profile (mirrors the pattern in the
+  // fetch effect above) and updates local state, without waiting on a
+  // full AUTH_ME refetch.
+  const patchProfileCache = (patch) => {
+    setProfile((prev) => {
+      const updated = { ...(prev || {}), ...patch };
+      try {
+        localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ data: updated, timestamp: Date.now() }));
+      } catch (_) {}
+      return updated;
+    });
+  };
+
+  const openCancelFlow = () => {
+    setCancelError(null);
+    setCancelInfo(null);
+    setCancelOtp("");
+    setCancelStep("confirm");
+  };
+
+  const closeCancelFlow = () => {
+    setCancelStep("idle");
+    setCancelError(null);
+    setCancelInfo(null);
+    setCancelOtp("");
+  };
+
+  // Step 1 of 2: user has confirmed intent — send them a code, don't cancel yet.
+  const requestCancellationOtp = async () => {
+    setCancelLoading(true);
+    setCancelError(null);
+    try {
+      const res = await fetch(API_ENDPOINTS.REQUEST_CANCELLATION_OTP, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Could not send confirmation code.");
+      setCancelInfo(data.message || "A confirmation code has been sent to your email.");
+      setCancelStep("otp");
+    } catch (err) {
+      setCancelError(err.message || "Could not send confirmation code.");
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
+  // Step 2 of 2: verify the code — this is the only call that actually cancels.
+  const confirmCancellation = async () => {
+    if (!cancelOtp.trim()) {
+      setCancelError("Enter the code from your email.");
+      return;
+    }
+    setCancelLoading(true);
+    setCancelError(null);
+    try {
+      const res = await fetch(API_ENDPOINTS.CONFIRM_CANCELLATION, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ otp: cancelOtp.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Could not confirm cancellation.");
+
+      patchProfileCache({ subscriptionStatus: data.subscriptionStatus || "canceled" });
+      closeCancelFlow();
+    } catch (err) {
+      setCancelError(err.message || "Could not confirm cancellation.");
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
   if (!user) return null;
 
   const dp = profile || user;
   const contributions = dp.contributions || 0;
   const likesReceived = dp.totalLikesReceived || 0;
+  const isActiveSubscription = dp.subscriptionStatus === "active";
+  const isCanceledSubscription = dp.subscriptionStatus === "canceled";
 
   return (
     <div className="ps-root">
@@ -96,6 +185,76 @@ export default function ProfileScreen({ onBack }) {
               <button className="ps-dialog-cancel" onClick={() => setShowConfirm(false)}>Cancel</button>
               <button className="ps-dialog-confirm" onClick={confirmLogout}>Logout</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel-subscription flow: step 1 — are you sure */}
+      {cancelStep === "confirm" && (
+        <div className="ps-overlay">
+          <div className="ps-dialog">
+            <h3 className="ps-dialog-title">Cancel Subscription</h3>
+            <p className="ps-dialog-msg">
+              We'll email you a confirmation code first — your subscription won't be
+              canceled until you enter it.
+            </p>
+            {cancelError && (
+              <p style={{ color: "#dc3545", fontSize: 14, margin: "8px 0 0" }}>{cancelError}</p>
+            )}
+            <div className="ps-dialog-actions">
+              <button className="ps-dialog-cancel" onClick={closeCancelFlow} disabled={cancelLoading}>
+                Never mind
+              </button>
+              <button className="ps-dialog-confirm" onClick={requestCancellationOtp} disabled={cancelLoading}>
+                {cancelLoading ? "Sending…" : "Send code"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel-subscription flow: step 2 — enter the code */}
+      {cancelStep === "otp" && (
+        <div className="ps-overlay">
+          <div className="ps-dialog">
+            <h3 className="ps-dialog-title">Enter Confirmation Code</h3>
+            {cancelInfo && (
+              <p className="ps-dialog-msg">{cancelInfo}</p>
+            )}
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={cancelOtp}
+              onChange={(e) => setCancelOtp(e.target.value.replace(/\D/g, ""))}
+              placeholder="6-digit code"
+              style={{
+                width: "100%", boxSizing: "border-box", fontSize: 18, letterSpacing: 4,
+                textAlign: "center", padding: "10px 12px", marginTop: 8,
+                border: "1px solid #dee2e6", borderRadius: 8,
+              }}
+            />
+            {cancelError && (
+              <p style={{ color: "#dc3545", fontSize: 14, margin: "8px 0 0" }}>{cancelError}</p>
+            )}
+            <div className="ps-dialog-actions">
+              <button className="ps-dialog-cancel" onClick={closeCancelFlow} disabled={cancelLoading}>
+                Never mind
+              </button>
+              <button className="ps-dialog-confirm" onClick={confirmCancellation} disabled={cancelLoading}>
+                {cancelLoading ? "Confirming…" : "Confirm Cancellation"}
+              </button>
+            </div>
+            <button
+              onClick={requestCancellationOtp}
+              disabled={cancelLoading}
+              style={{
+                marginTop: 12, background: "none", border: "none", color: "#2563eb",
+                fontSize: 13, cursor: "pointer", textDecoration: "underline",
+              }}
+            >
+              Resend code
+            </button>
           </div>
         </div>
       )}
@@ -141,6 +300,29 @@ export default function ProfileScreen({ onBack }) {
                 <span key={i} className="ps-badge">{badge}</span>
               ))}
             </div>
+          </>
+        )}
+
+        {/* ── Subscription ── */}
+        {(isActiveSubscription || isCanceledSubscription) && (
+          <>
+            <h2 className="ps-section-title" style={{ marginTop: 20 }}>Subscription</h2>
+            {isCanceledSubscription ? (
+              <p style={{ color: "#6b7280", fontSize: 14 }}>Your subscription has been canceled.</p>
+            ) : (
+              <button
+                onClick={openCancelFlow}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "10px 16px", backgroundColor: "#fff", color: "#dc3545",
+                  border: "1px solid #dc3545", borderRadius: 8, fontWeight: 600,
+                  cursor: "pointer", marginTop: 4,
+                }}
+              >
+                <XCircle size={18} color="#dc3545" />
+                <span>Cancel Subscription</span>
+              </button>
+            )}
           </>
         )}
 
