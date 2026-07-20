@@ -11,8 +11,8 @@ import InstructionDetailScreen from "./screens/Instructions/InstructionDetailScr
 import CommunityScreen from "./screens/Community/CommunityScreen";
 import BusinessDetailScreen from "./screens/Detail/BusinessDetailScreen";
 import UploadFlowScreen from "./screens/Upload/UploadFlowScreen";
-import TermsScreen from "./screens/Legal/TermsScreen";
-import PrivacyScreen from "./screens/Legal/PrivacyScreen";
+import TermsScreen from "./screens/Legal/(terms)/TermsScreen";
+import PrivacyScreen from "./screens/Legal/(privacy)/PrivacyScreen";
 
 
 // Warm up the backend
