@@ -279,7 +279,7 @@ export default function PrivacyScreen({ onBack, onTermsPress }) {
             CNS
           </div>
           <button className="pv-footer-back" onClick={onBack}>
-            Back to CNS
+            Back to CNSs
           </button>
         </div>
       </footer>
