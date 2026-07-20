@@ -330,8 +330,7 @@ export default function ProfileScreen({ onBack }) {
             {cancelStep === "confirm" && (
               <>
                 <p className="ps-dialog-msg">
-                  We'll email you a confirmation code first — your subscription won't be
-                  canceled until you enter it.
+                  We'll email you a confirmation code first for security — please enter the code to cancel your subscription.
                 </p>
                 {cancelError && (
                   <p className="ps-error-text">{cancelError}</p>
