@@ -1,0 +1,392 @@
+/* ── TermsScreen.css ─────────────────────────────────────────────────────────
+   Reuses the Route token system (see HomeScreen.css). Kept self-contained so
+   this screen can be reached standalone without depending on load order.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap');
+
+.ts-root {
+  --ink: #131B2E;
+  --paper: #F5F6F3;
+  --surface: #FFFFFF;
+  --route: #2A52E8;
+  --route-dark: #1E3EC2;
+  --signal: #F2A93B;
+  --slate: #626C7A;
+  --line: #E2E5EA;
+
+  min-height: 100vh;
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  scroll-behavior: smooth;
+}
+
+.ts-root * { box-sizing: border-box; }
+.ts-root button { font-family: inherit; cursor: pointer; }
+.ts-root :focus-visible { outline: 2px solid var(--route); outline-offset: 2px; }
+
+/* ── Top nav ── */
+.ts-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(245, 246, 243, 0.9);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+
+.ts-nav-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ts-back {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--slate);
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+.ts-back:hover { border-color: var(--route); color: var(--route); }
+
+.ts-wordmark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.ts-wordmark-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--signal);
+  flex-shrink: 0;
+}
+
+.ts-nav-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12.5px;
+  color: var(--slate);
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
+
+/* ── Hero header ── */
+.ts-hero {
+  border-bottom: 1px solid var(--line);
+}
+
+.ts-hero-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 48px 20px 40px;
+}
+
+.ts-eyebrow {
+  display: inline-block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--route);
+  background: rgba(42, 82, 232, 0.08);
+  padding: 6px 12px;
+  border-radius: 100px;
+  margin-bottom: 16px;
+}
+
+.ts-headline {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 38px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0 0 10px;
+}
+
+.ts-updated {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: var(--slate);
+  margin: 0;
+}
+
+/* ── Layout ── */
+.ts-layout {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 40px 20px 72px;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+}
+
+/* ── Waypoint TOC ── */
+.ts-toc {
+  position: sticky;
+  top: 76px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+}
+
+.ts-toc-line {
+  display: none; /* reserved for a future connecting line treatment */
+}
+
+.ts-toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 1.5px solid var(--line);
+}
+
+.ts-toc-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 7px 0 7px 16px;
+  margin-left: -1.5px;
+  border-left: 1.5px solid transparent;
+  color: var(--slate);
+  transition: color 0.15s, border-color 0.15s;
+}
+.ts-toc-item:hover { color: var(--ink); }
+.ts-toc-item.is-active {
+  color: var(--route);
+  border-left-color: var(--route);
+}
+
+.ts-toc-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--line);
+  flex-shrink: 0;
+  transition: background-color 0.15s;
+}
+.ts-toc-item.is-active .ts-toc-dot { background: var(--signal); }
+
+.ts-toc-num {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--slate);
+  flex-shrink: 0;
+  width: 16px;
+}
+
+.ts-toc-title {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+/* ── Article ── */
+.ts-article {
+  min-width: 0;
+}
+
+.ts-section {
+  padding-bottom: 32px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+  scroll-margin-top: 92px;
+}
+.ts-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.ts-section-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  margin: 0 0 14px;
+}
+
+.ts-section-num {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--route);
+  background: rgba(42, 82, 232, 0.08);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.ts-inline-link {
+  background: none;
+  border: none;
+  color: var(--route);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  margin-left: auto;
+}
+.ts-inline-link:hover { color: var(--route-dark); }
+
+.ts-p {
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--ink);
+  margin: 0 0 12px;
+}
+.ts-p:last-child { margin-bottom: 0; }
+
+.ts-ul {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ts-ul li {
+  position: relative;
+  padding-left: 18px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.ts-ul li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--signal);
+}
+
+.ts-contact-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-top: 4px;
+}
+
+.ts-contact-label {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.ts-contact-email {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13.5px;
+  color: var(--route);
+  text-decoration: none;
+}
+.ts-contact-email:hover { color: var(--route-dark); text-decoration: underline; }
+
+/* ── Footer ── */
+.ts-footer {
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+.ts-footer-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 28px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.ts-wordmark-footer { font-size: 16px; }
+.ts-footer-back {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 9px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.ts-footer-back:hover { border-color: var(--route); color: var(--route); }
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .ts-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .ts-toc {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+  .ts-toc ul {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-left: none;
+    gap: 8px;
+  }
+  .ts-toc-item {
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    padding: 6px 12px;
+    margin-left: 0;
+  }
+  .ts-toc-item.is-active {
+    border-color: var(--route);
+    background: rgba(42, 82, 232, 0.06);
+  }
+  .ts-toc-title { display: none; }
+  .ts-headline { font-size: 30px; }
+}
+
+@media (max-width: 480px) {
+  .ts-hero-inner { padding: 36px 20px 32px; }
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .ts-root { scroll-behavior: auto; }
+}

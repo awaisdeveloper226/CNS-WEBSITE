@@ -1,16 +1,16 @@
 import { useState, useEffect, useRef } from "react";
-import { AuthProvider, useAuthContext } from "./context/AuthContext";
-import { API_ENDPOINTS, AUTH_TOKEN_KEY } from "./constants/network";
+import { AuthProvider, useAuthContext } from "../../context/AuthContext";
+import { API_ENDPOINTS, AUTH_TOKEN_KEY } from "../../constants/network";
 
-import NavBar from "./components/Navbar/Navbar";
-import HomeScreen from "./screens/Home/HomeScreen";
-import AuthScreen from "./screens/Auth/AuthScreen";
-import ProfileScreen from "./screens/Profile/ProfileScreen";
-import SearchScreen from "./screens/Search/SearchScreen";
-import InstructionDetailScreen from "./screens/Instructions/InstructionDetailScreen";
-import CommunityScreen from "./screens/Community/CommunityScreen";
-import BusinessDetailScreen from "./screens/Detail/BusinessDetailScreen";
-import UploadFlowScreen from "./screens/Upload/UploadFlowScreen";
+import NavBar from "../../components/Navbar/Navbar";
+import HomeScreen from "../Home/HomeScreen";
+import AuthScreen from "./AuthScreen";
+import ProfileScreen from "../Profile/ProfileScreen";
+import SearchScreen from "../Search/SearchScreen";
+import InstructionDetailScreen from "../Instructions/InstructionDetailScreen";
+import CommunityScreen from "../Community/CommunityScreen";
+import BusinessDetailScreen from "../Detail/BusinessDetailScreen";
+import UploadFlowScreen from "../Upload/UploadFlowScreen";
 
 
 // Warm up the backend

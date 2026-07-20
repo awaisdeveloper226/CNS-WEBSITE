@@ -11,6 +11,8 @@ import InstructionDetailScreen from "./screens/Instructions/InstructionDetailScr
 import CommunityScreen from "./screens/Community/CommunityScreen";
 import BusinessDetailScreen from "./screens/Detail/BusinessDetailScreen";
 import UploadFlowScreen from "./screens/Upload/UploadFlowScreen";
+import TermsScreen from "./screens/Legal/(terms)/TermsScreen";
+import PrivacyScreen from "./screens/Legal/(privacy)/PrivacyScreen";
 
 
 // Warm up the backend
@@ -93,12 +95,22 @@ function GuestExitScreen({ businessName, onReturnToBusiness }) {
   );
 }
 
+// ── Resolve the initial tab from the URL hash, so a direct/bookmarked link
+//    to #/terms or #/privacy lands there on first paint instead of flashing
+//    "home" first and then switching.
+function getInitialTabFromHash() {
+  const hash = window.location.hash;
+  if (hash.startsWith("#/terms")) return "terms";
+  if (hash.startsWith("#/privacy")) return "privacy";
+  return "home";
+}
+
 // ── Inner app — needs AuthContext ─────────────────────────────────────────────
 function AppInner() {
   const { user, isLoading, setSession, completePaymentReturn } = useAuthContext();
   const isGuestUser = !!user?.isGuest;
 
-  const [tab, setTab]                           = useState("home");
+  const [tab, setTab]                           = useState(getInitialTabFromHash);
   const [homeBusinesses, setHomeBusinesses]     = useState([]);
   const [selectedBusiness, setSelectedBusiness] = useState(null);
   const [showUploadFlow, setShowUploadFlow]     = useState(false);
@@ -280,6 +292,8 @@ function AppInner() {
   const handleSearchPress    = () => setTab("search");
   const handleProfilePress   = () => setTab("profile");
   const handleBusinessSelect = (business) => setSelectedBusiness(business);
+  const handleTermsPress     = () => setTab("terms");
+  const handlePrivacyPress   = () => setTab("privacy");
 
   const handleTabChange = (newTab) => {
     if (newTab === "add") {
@@ -479,6 +493,16 @@ function AppInner() {
       case "profile":
         screenContent = <ProfileScreen onBack={() => setTab("home")} />;
         break;
+      case "terms":
+        screenContent = (
+          <TermsScreen onBack={() => { clearShareHash(); setTab("home"); }} />
+        );
+        break;
+      case "privacy":
+        screenContent = (
+          <PrivacyScreen onBack={() => { clearShareHash(); setTab("home"); }} />
+        );
+        break;
       default: // "home"
         screenContent = (
           <HomeScreen
@@ -486,6 +510,8 @@ function AppInner() {
             onSearchPress={handleSearchPress}
             onProfilePress={handleProfilePress}
             onContributePress={() => handleTabChange("add")}
+            onTermsPress={handleTermsPress}
+            onPrivacyPress={handlePrivacyPress}
             businesses={homeBusinesses}
             setBusinesses={setHomeBusinesses}
             scrollOffsetRef={homeScrollOffsetRef}
@@ -494,8 +520,14 @@ function AppInner() {
     }
   }
 
-  // Hide navbar when any overlay is active
-  const showNavBar = !showUploadFlow && !selectedBusiness && !selectedInstruction;
+  // Hide navbar when any overlay is active, or on the legal pages (reached
+  // via footer link, not a NavBar tab, so there's nothing there to highlight).
+  const showNavBar =
+    !showUploadFlow &&
+    !selectedBusiness &&
+    !selectedInstruction &&
+    tab !== "terms" &&
+    tab !== "privacy";
 
   return (
     <div key={user?._id || "logged-out"} style={{ display: "flex", flexDirection: "column", minHeight: "100vh", backgroundColor: "#f9fafb" }}>

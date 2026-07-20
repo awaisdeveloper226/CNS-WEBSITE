@@ -69,6 +69,8 @@ export default function HomeScreen({
   onSearchPress,
   onProfilePress,
   onContributePress,
+  onTermsPress,
+  onPrivacyPress,
   businesses,
   setBusinesses,
 }) {
@@ -251,11 +253,24 @@ export default function HomeScreen({
       {/* ── Footer ── */}
       <footer className="hs-footer">
         <div className="hs-footer-inner">
-          <div className="hs-wordmark hs-wordmark-footer">
-            <span className="hs-wordmark-dot" aria-hidden="true" />
-            CNS
+          <div className="hs-footer-brand">
+            <div className="hs-wordmark hs-wordmark-footer">
+              <span className="hs-wordmark-dot" aria-hidden="true" />
+              CNS
+            </div>
+            <p>Built by couriers, for couriers.</p>
           </div>
-          <p>Built by couriers, for couriers.</p>
+
+          <nav className="hs-footer-legal" aria-label="Legal">
+            <button className="hs-footer-legal-link" onClick={onTermsPress}>
+              Terms of Service
+            </button>
+            <span className="hs-footer-dot" aria-hidden="true" />
+            <button className="hs-footer-legal-link" onClick={onPrivacyPress}>
+              Privacy Policy
+            </button>
+          </nav>
+
           {/* <button className="hs-footer-link" onClick={onContributePress}>
             Add a business <ArrowUpRight size={14} strokeWidth={2.5} />
           </button> */}

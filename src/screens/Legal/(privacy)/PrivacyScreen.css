@@ -1,0 +1,402 @@
+/* ── PrivacyScreen.css ───────────────────────────────────────────────────────
+   Mirrors TermsScreen.css exactly (same Route token system, same layout
+   mechanics) with one addition: .pv-h3 for the nested subheadings inside
+   "Information We Collect" (Personal / Account / Location / User Content /
+   Technical Information).
+   ─────────────────────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap');
+
+.pv-root {
+  --ink: #131B2E;
+  --paper: #F5F6F3;
+  --surface: #FFFFFF;
+  --route: #2A52E8;
+  --route-dark: #1E3EC2;
+  --signal: #F2A93B;
+  --slate: #626C7A;
+  --line: #E2E5EA;
+
+  min-height: 100vh;
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  scroll-behavior: smooth;
+}
+
+.pv-root * { box-sizing: border-box; }
+.pv-root button { font-family: inherit; cursor: pointer; }
+.pv-root :focus-visible { outline: 2px solid var(--route); outline-offset: 2px; }
+
+/* ── Top nav ── */
+.pv-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(245, 246, 243, 0.9);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+
+.pv-nav-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pv-back {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--slate);
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+.pv-back:hover { border-color: var(--route); color: var(--route); }
+
+.pv-wordmark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.pv-wordmark-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--signal);
+  flex-shrink: 0;
+}
+
+.pv-nav-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12.5px;
+  color: var(--slate);
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
+
+/* ── Hero header ── */
+.pv-hero {
+  border-bottom: 1px solid var(--line);
+}
+
+.pv-hero-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 48px 20px 40px;
+}
+
+.pv-eyebrow {
+  display: inline-block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--route);
+  background: rgba(42, 82, 232, 0.08);
+  padding: 6px 12px;
+  border-radius: 100px;
+  margin-bottom: 16px;
+}
+
+.pv-headline {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 38px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0 0 10px;
+}
+
+.pv-updated {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: var(--slate);
+  margin: 0;
+}
+
+/* ── Layout ── */
+.pv-layout {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 40px 20px 72px;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+}
+
+/* ── Waypoint TOC ── */
+.pv-toc {
+  position: sticky;
+  top: 76px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+}
+
+.pv-toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 1.5px solid var(--line);
+}
+
+.pv-toc-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 7px 0 7px 16px;
+  margin-left: -1.5px;
+  border-left: 1.5px solid transparent;
+  color: var(--slate);
+  transition: color 0.15s, border-color 0.15s;
+}
+.pv-toc-item:hover { color: var(--ink); }
+.pv-toc-item.is-active {
+  color: var(--route);
+  border-left-color: var(--route);
+}
+
+.pv-toc-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--line);
+  flex-shrink: 0;
+  transition: background-color 0.15s;
+}
+.pv-toc-item.is-active .pv-toc-dot { background: var(--signal); }
+
+.pv-toc-num {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--slate);
+  flex-shrink: 0;
+  width: 16px;
+}
+
+.pv-toc-title {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+/* ── Article ── */
+.pv-article {
+  min-width: 0;
+}
+
+.pv-section {
+  padding-bottom: 32px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+  scroll-margin-top: 92px;
+}
+.pv-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.pv-section-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  margin: 0 0 14px;
+}
+
+.pv-section-num {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--route);
+  background: rgba(42, 82, 232, 0.08);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.pv-inline-link {
+  background: none;
+  border: none;
+  color: var(--route);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  margin-left: auto;
+}
+.pv-inline-link:hover { color: var(--route-dark); }
+
+/* Subheadings within a section — e.g. "Personal Information", "Account
+   Information" inside "Information We Collect" — styled a step down from
+   the section title so hierarchy stays legible. */
+.pv-h3 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 20px 0 8px;
+}
+.pv-h3:first-of-type { margin-top: 0; }
+
+.pv-p {
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--ink);
+  margin: 0 0 12px;
+}
+.pv-p:last-child { margin-bottom: 0; }
+
+.pv-ul {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pv-ul li {
+  position: relative;
+  padding-left: 18px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.pv-ul li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--signal);
+}
+
+.pv-contact-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-top: 4px;
+}
+
+.pv-contact-label {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.pv-contact-email {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13.5px;
+  color: var(--route);
+  text-decoration: none;
+}
+.pv-contact-email:hover { color: var(--route-dark); text-decoration: underline; }
+
+/* ── Footer ── */
+.pv-footer {
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+.pv-footer-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 28px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.pv-wordmark-footer { font-size: 16px; }
+.pv-footer-back {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 9px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.pv-footer-back:hover { border-color: var(--route); color: var(--route); }
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .pv-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .pv-toc {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+  .pv-toc ul {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-left: none;
+    gap: 8px;
+  }
+  .pv-toc-item {
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    padding: 6px 12px;
+    margin-left: 0;
+  }
+  .pv-toc-item.is-active {
+    border-color: var(--route);
+    background: rgba(42, 82, 232, 0.06);
+  }
+  .pv-toc-title { display: none; }
+  .pv-headline { font-size: 30px; }
+}
+
+@media (max-width: 480px) {
+  .pv-hero-inner { padding: 36px 20px 32px; }
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .pv-root { scroll-behavior: auto; }
+}
