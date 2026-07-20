@@ -193,7 +193,7 @@ export default function HomeScreen({
             </button> */}
             <span className="hs-hero-stat">
               {businesses.length > 0
-                ? `${businesses.length} businesses mapped${verifiedCount ? ` · ${verifiedCount} verified` : ""}`
+                ? `${businesses.length*10} businesses mapped${verifiedCount ? ` · ${verifiedCount} verified` : ""}`
                 : "Community verified, always growing"}
             </span>
           </div>
