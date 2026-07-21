@@ -42,7 +42,7 @@ export const API_ENDPOINTS = {
   CONFIRM_CANCELLATION: `${API_BASE_URL}/payments/confirm-cancellation`,
 
 
-  REACTIVATE_SUBSCRIPTION: `${API_BASE_URL}/api/payments/reactivate-subscription`,
+  REACTIVATE_SUBSCRIPTION: `${API_BASE_URL}/payments/reactivate-subscription`,
   BUSINESS_FROM_GLOBAL: `${API_BASE_URL}/businesses/from-global`,
 
   ENTRY_PIN: (id) => `${API_BASE_URL}/businesses/${id}/entry-pin`,
