@@ -20,6 +20,27 @@ const formatEndDate = (value) => {
   return date.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 };
 
+// Reads a fetch Response as JSON without ever throwing a raw parse error at
+// the caller. If the body is empty or not valid JSON (e.g. the route
+// doesn't exist and the server/proxy returned an empty or HTML response),
+// this surfaces a clear, actionable message instead of "Unexpected end of
+// JSON input".
+const parseJsonSafe = async (res) => {
+  const text = await res.text();
+  if (!text) {
+    throw new Error(
+      `Server returned an empty response (status ${res.status}). The endpoint may not be wired up yet.`
+    );
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Server returned an unexpected response (status ${res.status}). Please try again or contact support.`
+    );
+  }
+};
+
 export default function ProfileScreen({ onBack }) {
   const { user, token, logout } = useAuthContext();
   const [profile, setProfile] = useState(user);
@@ -75,7 +96,7 @@ export default function ProfileScreen({ onBack }) {
         const res = await fetch(API_ENDPOINTS.AUTH_ME, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const data = await res.json();
+        const data = await parseJsonSafe(res);
 
         if (!res.ok) {
           if (res.status === 401) {
@@ -174,7 +195,7 @@ export default function ProfileScreen({ onBack }) {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) throw new Error(data.message || "Could not send confirmation code.");
       setCancelInfo(data.message || "A confirmation code has been sent to your email.");
       setCancelStep("otp");
@@ -202,7 +223,7 @@ export default function ProfileScreen({ onBack }) {
         },
         body: JSON.stringify({ otp: cancelOtp.trim() }),
       });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) throw new Error(data.message || "Could not confirm cancellation.");
 
       patchProfileCache({
@@ -230,7 +251,7 @@ export default function ProfileScreen({ onBack }) {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) throw new Error(data.message || "Could not reactivate subscription.");
 
       patchProfileCache({
@@ -519,16 +540,21 @@ export default function ProfileScreen({ onBack }) {
         )}
 
         {/* ── Hidden Settings Trigger (tiny, hard to notice) ── */}
-        <div className="ps-settings-trigger">
-          <button 
-            className="ps-settings-btn"
-            onClick={openSettings}
-            aria-label="Settings"
-          >
-            <Settings size={14} color="#9ca3af" />
-          </button>
-          <span className="ps-settings-label">Preferences</span>
-        </div>
+        {/* Only shown while there's an active subscription to cancel. Once
+            already canceled, this flow has nothing left to do — the only
+            relevant action at that point is "Keep my subscription" above. */}
+        {!isCanceledSubscription && (
+          <div className="ps-settings-trigger">
+            <button 
+              className="ps-settings-btn"
+              onClick={openSettings}
+              aria-label="Settings"
+            >
+              <Settings size={14} color="#9ca3af" />
+            </button>
+            <span className="ps-settings-label">Preferences</span>
+          </div>
+        )}
 
         {/* ── Logout ── */}
         <button className="ps-logout-btn" onClick={handleLogout}>
