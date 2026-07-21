@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, LogOut, XCircle, Settings, AlertTriangle } from "lucide-react";
+import { User, LogOut, XCircle, Settings, AlertTriangle, RotateCcw } from "lucide-react";
 import { useAuthContext } from "../../context/AuthContext";
 import { API_ENDPOINTS } from "../../constants/network";
 import "./ProfileScreen.css";
@@ -40,6 +40,10 @@ export default function ProfileScreen({ onBack }) {
   const [showCancelOption, setShowCancelOption] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [showDangerZone, setShowDangerZone] = useState(false);
+
+  // ── Reactivate (undo pending cancellation) flow ─────────────────────────
+  const [reactivateLoading, setReactivateLoading] = useState(false);
+  const [reactivateError, setReactivateError] = useState(null);
 
   const PROFILE_CACHE_KEY = `profile_${user?.id || user?._id}`;
 
@@ -204,12 +208,40 @@ export default function ProfileScreen({ onBack }) {
       patchProfileCache({
         subscriptionStatus: data.subscriptionStatus || "canceled",
         subscriptionEndsAt: data.subscriptionEndsAt || null,
+        cancelAtPeriodEnd: true,
       });
       closeSettings();
     } catch (err) {
       setCancelError(err.message || "Could not confirm cancellation.");
     } finally {
       setCancelLoading(false);
+    }
+  };
+
+  // Undo a pending cancellation — only available while still inside the
+  // grace period (subscriptionStatus === 'canceled' && cancelAtPeriodEnd).
+  // Once the period actually ends the account is deleted server-side, so
+  // this button naturally stops being reachable at that point.
+  const handleReactivate = async () => {
+    setReactivateLoading(true);
+    setReactivateError(null);
+    try {
+      const res = await fetch(API_ENDPOINTS.REACTIVATE_SUBSCRIPTION, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Could not reactivate subscription.");
+
+      patchProfileCache({
+        subscriptionStatus: data.subscriptionStatus || "active",
+        subscriptionEndsAt: null,
+        cancelAtPeriodEnd: false,
+      });
+    } catch (err) {
+      setReactivateError(err.message || "Could not reactivate subscription.");
+    } finally {
+      setReactivateLoading(false);
     }
   };
 
@@ -452,17 +484,32 @@ export default function ProfileScreen({ onBack }) {
           </>
         )}
 
-        {/* ── Subscription Status (read-only, no cancel button visible) ── */}
+        {/* ── Subscription Status ── */}
         {(isActiveSubscription || isCanceledSubscription) && (
           <>
             <h2 className="ps-section-title" style={{ marginTop: 20 }}>Subscription</h2>
             {isCanceledSubscription ? (
-              <p style={{ color: "#6b7280", fontSize: 14 }}>
-                Your subscription has been canceled.
-                {formatEndDate(dp.subscriptionEndsAt)
-                  ? ` You will continue to have full access to the app until the end of your current billing cycle on ${formatEndDate(dp.subscriptionEndsAt)}.`
-                  : " You will continue to have full access to the app until the end of your current billing cycle."}
-              </p>
+              <>
+                <p style={{ color: "#6b7280", fontSize: 14 }}>
+                  Your subscription has been canceled.
+                  {formatEndDate(dp.subscriptionEndsAt)
+                    ? ` You will continue to have full access to the app until the end of your current billing cycle on ${formatEndDate(dp.subscriptionEndsAt)}.`
+                    : " You will continue to have full access to the app until the end of your current billing cycle."}
+                  {" "}After that date your account and its data will be permanently deleted.
+                </p>
+                <button
+                  className="ps-dialog-confirm"
+                  onClick={handleReactivate}
+                  disabled={reactivateLoading}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8 }}
+                >
+                  <RotateCcw size={16} />
+                  {reactivateLoading ? "Reactivating…" : "Keep my subscription"}
+                </button>
+                {reactivateError && (
+                  <p className="ps-error-text">{reactivateError}</p>
+                )}
+              </>
             ) : (
               <p style={{ color: "#10b981", fontSize: 14, fontWeight: 500 }}>
                 ✓ Active subscription
