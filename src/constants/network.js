@@ -41,6 +41,8 @@ export const API_ENDPOINTS = {
   REQUEST_CANCELLATION_OTP: `${API_BASE_URL}/payments/request-cancellation-otp`,
   CONFIRM_CANCELLATION: `${API_BASE_URL}/payments/confirm-cancellation`,
 
+
+  REACTIVATE_SUBSCRIPTION: `${API_BASE_URL}/api/payments/reactivate-subscription`,
   BUSINESS_FROM_GLOBAL: `${API_BASE_URL}/businesses/from-global`,
 
   ENTRY_PIN: (id) => `${API_BASE_URL}/businesses/${id}/entry-pin`,
