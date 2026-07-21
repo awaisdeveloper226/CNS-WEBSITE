@@ -516,7 +516,7 @@ export default function ProfileScreen({ onBack }) {
                   {formatEndDate(dp.subscriptionEndsAt)
                     ? ` You will continue to have full access to the app until the end of your current billing cycle on ${formatEndDate(dp.subscriptionEndsAt)}.`
                     : " You will continue to have full access to the app until the end of your current billing cycle."}
-                  {" "}After that date your account and its data will be permanently deleted.
+                  {" "}After that date your account will be deleted and you will no longer be charged.
                 </p>
                 <button
                   className="ps-dialog-reactivate"
