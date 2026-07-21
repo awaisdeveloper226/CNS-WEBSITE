@@ -439,6 +439,23 @@
 }
 .ps-dialog-confirm:hover { background: #b91c1c; }
 
+
+.ps-dialog-reactivate {
+  background: green;
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.ps-dialog-reactivate:hover { background: rgb(3, 97, 3); }
+
+
+
+
 /* ── Responsive ── */
 @media (min-width: 640px) {
   .ps-inner { padding-top: 40px; padding-left: 24px; padding-right: 24px; }

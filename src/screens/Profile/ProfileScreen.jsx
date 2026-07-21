@@ -519,7 +519,7 @@ export default function ProfileScreen({ onBack }) {
                   {" "}After that date your account and its data will be permanently deleted.
                 </p>
                 <button
-                  className="ps-dialog-confirm"
+                  className="ps-dialog-reactivate"
                   onClick={handleReactivate}
                   disabled={reactivateLoading}
                   style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8 }}
