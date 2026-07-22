@@ -37,13 +37,15 @@ export default function CommunityScreen({ onBack }) {
       const json = await response.json();
       if (!response.ok) throw new Error(json.message || "Failed to fetch.");
 
-      const ranked = json.map((item, index) => ({
-        id: item._id.toString(),
-        name: item.name,
-        contributions: item.contributions,
-        level: item.level,
-        rank: index + 1,
-      }));
+      const ranked = json
+        .filter((item) => !/^guest/i.test((item.name || "").trim()))
+        .map((item, index) => ({
+          id: item._id.toString(),
+          name: item.name,
+          contributions: item.contributions,
+          level: item.level,
+          rank: index + 1,
+        }));
 
       setLeaderboard(ranked);
       setLoading(false);
