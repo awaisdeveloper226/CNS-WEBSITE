@@ -347,7 +347,7 @@ export default function AuthScreen() {
     <div className="auth-root">
       <div className="auth-inner">
         <div className="auth-header">
-          <img src="/favicon.ico" alt="CNS" width={56} height={56} />
+          <img src="/favicon.ico" alt="CNS" width={70} height={70} />
           <h1 className="auth-app-title">CNS</h1>
           <p className="auth-app-subtitle">Smarter deliveries, powered by drivers like you</p>
         </div>
