@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { API_ENDPOINTS } from "../../constants/network";
 import "./UploadFlowScreen.css";
 
 // ─────────────────────────────────────────────
@@ -31,7 +32,16 @@ const Icons = {
   Navigation: ({ size, color }) => <Icon size={size} color={color} d="M3 11l19-9-9 19-2-8-8-2z" />,
   CheckCircle: ({ size, color }) => <Icon size={size} color={color} d={["M22 11.08V12a10 10 0 11-5.93-9.14", "M22 4L12 14.01l-3-3"]} />,
   ShieldCheck: ({ size, color }) => <Icon size={size} color={color} d={["M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", "M9 12l2 2 4-4"]} />,
+  ParkingSquare: ({ size, color }) => <Icon size={size} color={color} d={["M3 3h18v18H3z", "M9 17V7h4a3 3 0 010 6H9"]} />,
+  Compass: ({ size, color }) => <Icon size={size} color={color} d={["M12 22a10 10 0 100-20 10 10 0 000 20z", "M16.24 7.76l-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"]} />,
 };
+
+// ─────────────────────────────────────────────
+// CONFIG — Cloudinary (same account the app uploads to)
+// ─────────────────────────────────────────────
+const CLOUDINARY_CLOUD_NAME = "dvmoaqsdb";
+const CLOUDINARY_UPLOAD_PRESET = "ml_default";
+const CLOUDINARY_API_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/upload`;
 
 // ─────────────────────────────────────────────
 // HELPERS
@@ -45,13 +55,63 @@ const useDebounce = (value, delay) => {
   return debounced;
 };
 
-
-
-
 const fmtDuration = (secs) => {
   const m = Math.floor(secs / 60).toString().padStart(2, "0");
   const s = (secs % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
+};
+
+// Auth token — matches key used by SearchScreen.jsx on the website
+const getToken = () => {
+  try {
+    return localStorage.getItem("courierNavigatorToken");
+  } catch {
+    return null;
+  }
+};
+
+// Real Cloudinary upload — takes an actual browser File/Blob, not a uri string.
+async function uploadToCloudinary(file, resourceType) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  formData.append("resource_type", resourceType);
+  const res = await fetch(CLOUDINARY_API_URL, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    let message = "Upload failed";
+    try {
+      const err = await res.json();
+      message = err.error?.message || message;
+    } catch (_) {}
+    throw new Error(message);
+  }
+  const data = await res.json();
+  return data.secure_url;
+}
+
+// A business is "unregistered" (needs to be POST'd first) when it has a
+// placeId from an external search but no local MongoDB _id/id yet — same
+// rule the app uses.
+const getBusinessId = (b) => b?.id || b?._id || null;
+const isUnregisteredBusiness = (b) => {
+  if (!b) return false;
+  const hasPlaceId = !!b.placeId;
+  const hasLocalId = !!(b.id || b._id);
+  return hasPlaceId && !hasLocalId;
+};
+
+// ── Category mapping — EXACT copy of the app's mapCategoryToBackend ─────────
+// category: "parking" | "navigation" | "delivery"
+// deliveryType: "Courier/Parcel Delivery" | "Food Delivery" | "Both"
+const mapCategoryToBackend = (category, deliveryType) => {
+  if (category === "parking") return "Parking / Entry Points";
+  if (category === "navigation") return "Navigation to Store Inside Mall";
+  if (deliveryType === "Food Delivery") return "Food Delivery Instructions";
+  if (deliveryType === "Courier/Parcel Delivery") return "Courier/Parcel Delivery Instructions";
+  return "Delivery Procedure";
 };
 
 // ─────────────────────────────────────────────
@@ -76,6 +136,54 @@ const MapPickerModal = ({ visible, onClose, onConfirm }) => {
     }
   }, [visible]);
 
+  // ── Real reverse geocode via backend (same endpoint the app uses) ─────────
+  const reverseGeocode = async (lat, lng) => {
+    try {
+      const res = await fetch(`${API_ENDPOINTS.GEOCODE}?lat=${lat}&lng=${lng}`);
+      const data = await res.json();
+      if (data.status !== "OK" || !data.results?.length) {
+        setGeocoding(false);
+        setPickedResult({
+          name: `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+          address: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+          lat,
+          lng,
+        });
+        return;
+      }
+      const results = data.results;
+      const best = results[0];
+      const displayAddress = best.formatted_address;
+      let displayName = data.nearbyName ?? "";
+      if (!displayName) {
+        const comps = best.address_components || [];
+        const get = (...types) =>
+          comps.find((c) => types.some((t) => c.types?.includes(t)))?.long_name ?? "";
+        const streetNumber = get("street_number");
+        const route = get("route");
+        const sublocality = get("sublocality_level_1", "sublocality", "neighborhood");
+        const locality = get("locality", "postal_town");
+        if (streetNumber && route) displayName = `${streetNumber} ${route}`;
+        else if (route && sublocality) displayName = `${route}, ${sublocality}`;
+        else if (route) displayName = route;
+        else if (sublocality) displayName = sublocality;
+        else if (locality) displayName = locality;
+        else displayName = displayAddress.split(",")[0].trim();
+      }
+      const safeName = displayName || `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+      setGeocoding(false);
+      setPickedResult({ name: safeName, address: displayAddress, lat, lng });
+    } catch (err) {
+      setGeocoding(false);
+      setPickedResult({
+        name: `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+        address: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+        lat,
+        lng,
+      });
+    }
+  };
+
   useEffect(() => {
     const handler = (e) => {
       try {
@@ -83,16 +191,7 @@ const MapPickerModal = ({ visible, onClose, onConfirm }) => {
         if (msg.type === "MAP_TAPPED" && msg.lat != null && msg.lng != null) {
           setGeocoding(true);
           setPickedResult(null);
-          // Simulate reverse geocode (no backend in web demo)
-          setTimeout(() => {
-            setGeocoding(false);
-            setPickedResult({
-              name: `Location (${msg.lat.toFixed(4)}, ${msg.lng.toFixed(4)})`,
-              address: `${msg.lat.toFixed(6)}, ${msg.lng.toFixed(6)}`,
-              lat: msg.lat,
-              lng: msg.lng,
-            });
-          }, 800);
+          reverseGeocode(msg.lat, msg.lng);
         }
       } catch (_) {}
     };
@@ -259,20 +358,27 @@ const WhatsAppVoiceRecorder = ({ onAudioReady, disabled = false }) => {
     }
   };
 
+  // ── Real upload: the recorded blob is pushed to Cloudinary (resource_type
+  // "video", same as the app does for its .m4a voice notes) so audioUrl is a
+  // real, persistable URL instead of a local blob: URL that dies on refresh.
   const finishAndUpload = () => {
     if (!mediaRecorderRef.current) return;
     const finalDuration = durationRef.current;
     clearTimers();
     mediaRecorderRef.current.onstop = async () => {
       const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-      const url = URL.createObjectURL(blob);
       stopStream();
       if (!isCancelledRef.current) {
         setUploading(true);
-        // In real app: upload to Cloudinary. Here we pass the local blob URL.
-        await new Promise(r => setTimeout(r, 600));
-        setUploading(false);
-        onAudioReady(url, finalDuration);
+        try {
+          const file = new File([blob], `voice_${Date.now()}.webm`, { type: "audio/webm" });
+          const url = await uploadToCloudinary(file, "video");
+          onAudioReady(url, finalDuration);
+        } catch (err) {
+          alert(`Upload failed: ${err.message}`);
+        } finally {
+          setUploading(false);
+        }
       }
       mediaRecorderRef.current = null;
     };
@@ -438,6 +544,7 @@ const CreateBusinessForm = ({ onBusinessCreated }) => {
   const [businessName, setBusinessName] = useState("");
   const [businessAddress, setBusinessAddress] = useState("");
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
+  const [selectedCoords, setSelectedCoords] = useState(null);
   const [pickedFromMap, setPickedFromMap] = useState(false);
   const [pickedCoords, setPickedCoords] = useState(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -447,6 +554,9 @@ const CreateBusinessForm = ({ onBusinessCreated }) => {
   const abortRef = useRef(null);
   const hasSelection = !!(businessName && businessAddress);
 
+  // ── Real suggestions via our own backend (same PLACES_SEARCH endpoint the
+  // app and the site's SearchScreen use) instead of calling Nominatim
+  // directly from the browser.
   useEffect(() => {
     const query = debouncedSearch.trim();
     if (!query || hasSelection) { setSuggestions([]); setShowDropdown(false); return; }
@@ -454,24 +564,15 @@ const CreateBusinessForm = ({ onBusinessCreated }) => {
     abortRef.current = new AbortController();
     setLoadingSuggestions(true);
     setSearchError(null);
-    // Demo: use OpenStreetMap Nominatim for suggestions (no API key needed)
-    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`, {
+    fetch(`${API_ENDPOINTS.PLACES_SEARCH}?q=${encodeURIComponent(query)}`, {
       signal: abortRef.current.signal,
-      headers: { "Accept-Language": "en" }
     })
       .then(r => r.json())
       .then(data => {
-        const mapped = data.map(item => ({
-          placeId: item.place_id?.toString(),
-          name: item.display_name.split(",")[0],
-          address: item.display_name,
-          source: "nominatim",
-          type: item.type,
-        }));
-        setSuggestions(mapped);
+        setSuggestions(Array.isArray(data) ? data : []);
         setShowDropdown(true);
       })
-      .catch(err => { if (err?.name === "AbortError") return; setSearchError("Could not fetch suggestions."); })
+      .catch(err => { if (err?.name === "AbortError") return; setSearchError("Could not fetch suggestions. Try again."); })
       .finally(() => setLoadingSuggestions(false));
   }, [debouncedSearch, hasSelection]);
 
@@ -479,6 +580,9 @@ const CreateBusinessForm = ({ onBusinessCreated }) => {
     setBusinessName(place.name);
     setBusinessAddress(place.address);
     setSelectedPlaceId(place.placeId);
+    setSelectedCoords(
+      place.lat != null && place.lng != null ? { lat: place.lat, lng: place.lng } : null
+    );
     setPickedFromMap(false);
     setSearchText(place.name);
     setShowDropdown(false);
@@ -498,25 +602,57 @@ const CreateBusinessForm = ({ onBusinessCreated }) => {
 
   const handleClear = () => {
     setBusinessName(""); setBusinessAddress(""); setSelectedPlaceId(null);
-    setPickedFromMap(false); setPickedCoords(null);
+    setSelectedCoords(null); setPickedFromMap(false); setPickedCoords(null);
     setSearchText(""); setSuggestions([]); setShowDropdown(false);
   };
 
+  // ── Real create — POSTs to the backend, just like the app does. ───────────
   const handleSubmit = async () => {
     if (!hasSelection) { alert("Please select a business first."); return; }
+    const token = getToken();
+    if (!token) { alert("Authentication token missing. Please log in."); return; }
+
     setIsCreating(true);
-    // Simulate API call
-    await new Promise(r => setTimeout(r, 700));
-    onBusinessCreated({
-      id: `local_${Date.now()}`,
-      _id: `local_${Date.now()}`,
-      name: businessName,
-      address: businessAddress,
-      type: "Standalone",
-      totalContributions: 0,
-      isVerified: false,
-    });
-    setIsCreating(false);
+    try {
+      const syntheticPlaceId = pickedFromMap && !selectedPlaceId && pickedCoords
+        ? `map_${pickedCoords.lat.toFixed(5)}_${pickedCoords.lng.toFixed(5)}`
+        : null;
+
+      const payload = {
+        name: businessName,
+        address: businessAddress,
+        type: "Standalone",
+        source: "nominatim",
+        placeId: selectedPlaceId || syntheticPlaceId,
+        lat: pickedCoords?.lat ?? selectedCoords?.lat ?? null,
+        lng: pickedCoords?.lng ?? selectedCoords?.lng ?? null,
+      };
+
+      const response = await fetch(API_ENDPOINTS.BUSINESSES, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Failed to register business.");
+
+      onBusinessCreated({
+        id: data._id || data.id,
+        _id: data._id,
+        name: data.name,
+        address: data.address,
+        type: data.type,
+        totalContributions: data.totalContributions,
+        isVerified: data.isVerified,
+      });
+    } catch (err) {
+      alert(`Failed to add business: ${err.message}`);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   return (
@@ -629,6 +765,8 @@ export default function UploadFlowScreen({ onBack, onComplete, initialBusiness =
   const [step, setStep] = useState(initialBusiness ? "details" : "create-business");
   const [selectedBusiness, setSelectedBusiness] = useState(initialBusiness);
   const [deliveryType, setDeliveryType] = useState("Courier/Parcel Delivery");
+  // ── Category — matches the app's ClientInstructionCategory: "parking" | "navigation" | "delivery" ──
+  const [category, setCategory] = useState("parking");
   const [notes, setNotes] = useState("");
   const [mediaItems, setMediaItems] = useState([]);
   const [instructionMode, setInstructionMode] = useState("write");
@@ -640,37 +778,57 @@ export default function UploadFlowScreen({ onBack, onComplete, initialBusiness =
 
   const user = { name: "You", level: 1 };
 
-  // Media handlers
+  // ── Media handlers — real Cloudinary uploads, tracked per-item like the app ─
   const handlePhotoUpload = () => {
     const input = document.createElement("input");
     input.type = "file"; input.accept = "image/*"; input.multiple = true;
     input.onchange = async (e) => {
-      const files = Array.from(e.target.files);
-      files.forEach(file => {
-        const localUrl = URL.createObjectURL(file);
-        const key = `ph_${Date.now()}_${Math.random()}`;
-        setMediaItems(prev => [...prev, { url: localUrl, localUri: localUrl, type: "image", uploading: false, _key: key }]);
-      });
+      const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
+      const keys = files.map((_, i) => `ph_${Date.now()}_${i}`);
+      setMediaItems(prev => [
+        ...prev,
+        ...files.map((f, i) => ({
+          url: URL.createObjectURL(f),
+          localUri: URL.createObjectURL(f),
+          type: "image",
+          uploading: true,
+          _key: keys[i],
+        })),
+      ]);
+      await Promise.all(files.map(async (file, i) => {
+        const key = keys[i];
+        try {
+          const url = await uploadToCloudinary(file, "image");
+          setMediaItems(prev => prev.map(m => m._key === key ? { ...m, url, uploading: false } : m));
+        } catch (err) {
+          setMediaItems(prev => prev.filter(m => m._key !== key));
+          alert(`Upload Failed: ${err.message}`);
+        }
+      }));
     };
     input.click();
   };
 
-  // Opens the actual device camera (not the gallery/file picker).
-  // The `capture` attribute is what tells mobile browsers to launch the
-  // camera app directly instead of the generic file chooser. Desktop
-  // browsers without a camera will just fall back to file selection.
+  // "capture" launches the device camera directly on mobile browsers.
   const handleCameraCapture = () => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
-    input.capture = "environment"; // "environment" = rear camera, "user" = front camera
+    input.capture = "environment";
     input.onchange = async (e) => {
-      const files = Array.from(e.target.files);
-      files.forEach(file => {
-        const localUrl = URL.createObjectURL(file);
-        const key = `ph_${Date.now()}_${Math.random()}`;
-        setMediaItems(prev => [...prev, { url: localUrl, localUri: localUrl, type: "image", uploading: false, _key: key }]);
-      });
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const key = `ph_${Date.now()}`;
+      const localUrl = URL.createObjectURL(file);
+      setMediaItems(prev => [...prev, { url: localUrl, localUri: localUrl, type: "image", uploading: true, _key: key }]);
+      try {
+        const url = await uploadToCloudinary(file, "image");
+        setMediaItems(prev => prev.map(m => m._key === key ? { ...m, url, uploading: false } : m));
+      } catch (err) {
+        setMediaItems(prev => prev.filter(m => m._key !== key));
+        alert(`Upload Failed: ${err.message}`);
+      }
     };
     input.click();
   };
@@ -678,12 +836,19 @@ export default function UploadFlowScreen({ onBack, onComplete, initialBusiness =
   const handleVideoUpload = () => {
     const input = document.createElement("input");
     input.type = "file"; input.accept = "video/*";
-    input.onchange = (e) => {
-      const file = e.target.files[0];
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0];
       if (!file) return;
-      const localUrl = URL.createObjectURL(file);
       const key = `vid_${Date.now()}`;
-      setMediaItems(prev => [...prev, { url: localUrl, localUri: localUrl, type: "video", uploading: false, _key: key }]);
+      const localUrl = URL.createObjectURL(file);
+      setMediaItems(prev => [...prev, { url: localUrl, localUri: localUrl, type: "video", uploading: true, _key: key }]);
+      try {
+        const url = await uploadToCloudinary(file, "video");
+        setMediaItems(prev => prev.map(m => m._key === key ? { ...m, url, uploading: false } : m));
+      } catch (err) {
+        setMediaItems(prev => prev.filter(m => m._key !== key));
+        alert(`Upload Failed: ${err.message}`);
+      }
     };
     input.click();
   };
@@ -698,28 +863,94 @@ export default function UploadFlowScreen({ onBack, onComplete, initialBusiness =
     const input = document.createElement("input");
     input.type = "file"; input.accept = "audio/*";
     input.onchange = async (e) => {
-      const file = e.target.files[0];
+      const file = e.target.files?.[0];
       if (!file) return;
       setUploadingFileAudio(true);
-      await new Promise(r => setTimeout(r, 600));
-      const url = URL.createObjectURL(file);
-      setAudioUrl(url);
-      setAudioDuration(null);
-      setUploadingFileAudio(false);
+      try {
+        const url = await uploadToCloudinary(file, "video");
+        setAudioUrl(url);
+        setAudioDuration(null);
+      } catch (err) {
+        alert(`Upload failed: ${err.message}`);
+      } finally {
+        setUploadingFileAudio(false);
+      }
     };
     input.click();
   };
 
+  // ── Real submission — registers the business first if it's still
+  // unregistered, then POSTs the contribution with the correct category.
   const handleSubmitContribution = async () => {
+    const token = getToken();
+    if (!token) { alert("Authentication missing. Please log in."); return; }
     if (!selectedBusiness) { alert("No business selected."); return; }
     if (instructionMode === "write" && !notes) { alert("Please provide written instructions."); return; }
     if (instructionMode === "record" && !audioUrl) { alert("Please record or upload audio."); return; }
     if (mediaItems.some(m => m.uploading)) { alert("Some media is still uploading."); return; }
+
     setIsSubmitting(true);
-    await new Promise(r => setTimeout(r, 900));
-    setIsSubmitting(false);
-    alert("Your contribution has been submitted!");
-    if (onComplete) onComplete(selectedBusiness);
+    try {
+      let businessId = null;
+
+      if (isUnregisteredBusiness(selectedBusiness)) {
+        const r = await fetch(API_ENDPOINTS.BUSINESSES, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name: selectedBusiness.name,
+            address: selectedBusiness.address,
+            type: "Standalone",
+            placeId: selectedBusiness.placeId,
+            lat: selectedBusiness.lat ?? null,
+            lng: selectedBusiness.lng ?? null,
+            source: ["manual", "foursquare", "nominatim"].includes(selectedBusiness.source)
+              ? selectedBusiness.source
+              : "nominatim",
+          }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.message || "Failed to register business.");
+        businessId = d._id || d.id;
+        setSelectedBusiness(prev => prev ? { ...prev, _id: d._id, id: d.id } : prev);
+      } else {
+        businessId = getBusinessId(selectedBusiness);
+      }
+
+      if (!businessId) throw new Error("Could not resolve business ID.");
+
+      const response = await fetch(API_ENDPOINTS.CONTRIBUTIONS, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          businessId,
+          notes: instructionMode === "write" ? notes : "",
+          audioUrl: instructionMode === "record" ? audioUrl : null,
+          audioDuration: instructionMode === "record" ? audioDuration : null,
+          type: deliveryType,
+          category: mapCategoryToBackend(category, deliveryType),
+          tags: [],
+          photos: mediaItems.filter(m => m.type === "image").map(m => m.url),
+          videos: mediaItems.filter(m => m.type === "video").map(m => m.url),
+          isVerifiedBusinessInstruction: isBusinessOwner,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Submission failed.");
+
+      alert("Your contribution has been submitted!");
+      if (onComplete) onComplete({ ...selectedBusiness, _id: businessId, id: businessId });
+    } catch (err) {
+      alert(`Failed to submit: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // ── CREATE BUSINESS STEP ──────────────────────────────────────────────────
@@ -772,6 +1003,25 @@ export default function UploadFlowScreen({ onBack, onComplete, initialBusiness =
                   {dt === "Courier/Parcel Delivery" && <Icons.Package size={18} color={deliveryType === dt ? "#fff" : "#6b7280"} />}
                   {dt === "Food Delivery" && <Icons.UtensilsCrossed size={18} color={deliveryType === dt ? "#fff" : "#6b7280"} />}
                   <span>{dt === "Courier/Parcel Delivery" ? "Courier" : dt === "Food Delivery" ? "Food" : "Both"}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* CATEGORY — matches the app's Parking / Navigation / Delivery selector */}
+            <label className="form-label">Instruction Category *</label>
+            <div className="delivery-type-buttons">
+              {[
+                { key: "parking", label: "Parking", icon: Icons.ParkingSquare },
+                { key: "navigation", label: "Navigation", icon: Icons.Compass },
+                { key: "delivery", label: "Delivery", icon: Icons.Package },
+              ].map(({ key, label, icon: CatIcon }) => (
+                <button
+                  key={key}
+                  className={`category-btn delivery-type-btn${category === key ? " active" : ""}`}
+                  onClick={() => setCategory(key)}
+                >
+                  <CatIcon size={18} color={category === key ? "#fff" : "#6b7280"} />
+                  <span>{label}</span>
                 </button>
               ))}
             </div>
