@@ -383,9 +383,6 @@ function BusinessDetailContent({
   const [currentPin, setCurrentPin] = useState(null);
   const pinSeededRef = useRef(false);
 
-  const CACHE_KEY = `business_detail_${String(business.id || business._id || "")}`;
-  const CACHE_TTL = 0.25 * 60 * 1000;
-
   const businessId = useMemo(
     () => String(business.id || business._id || ""),
     [business.id, business._id],
@@ -400,24 +397,17 @@ function BusinessDetailContent({
     if (!businessId) { setError("Invalid business ID"); setLoading(false); return; }
 
     const load = async () => {
-      try {
-        const raw = localStorage.getItem(CACHE_KEY);
-        if (raw) {
-          const { data, timestamp } = JSON.parse(raw);
-          setDetailedBusiness(data); setLoading(false);
-          if (Date.now() - timestamp < CACHE_TTL) return;
-        }
-      } catch (_) {}
-
+      setLoading(true);
       try {
         const response = await fetch(API_ENDPOINTS.BUSINESS_DETAIL(businessId));
         if (!response.ok) { const err = await response.json(); throw new Error(err.message || "Failed to load business"); }
         const data = await response.json();
-        setDetailedBusiness(data); setLoading(false);
-        localStorage.setItem(CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
+        setDetailedBusiness(data);
+        setError(null);
       } catch (err) {
+        setError(err.message);
+      } finally {
         setLoading(false);
-        setDetailedBusiness((prev) => { if (!prev) setError(err.message); return prev; });
       }
     };
 
@@ -426,7 +416,7 @@ function BusinessDetailContent({
 
   // Seed currentPin from the fetched business exactly once — after that,
   // EntryPinWidget's onPinChange is the source of truth (so a background
-  // cache/network refresh doesn't stomp a pin the user just edited).
+  // refresh doesn't stomp a pin the user just edited).
   useEffect(() => {
     if (detailedBusiness && !pinSeededRef.current) {
       setCurrentPin(detailedBusiness.entryPin ?? null);
