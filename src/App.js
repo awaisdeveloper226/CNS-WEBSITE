@@ -118,6 +118,27 @@ function AppInner() {
   const [guestShowExit, setGuestShowExit]       = useState(false);
   const homeScrollOffsetRef = useRef(0);
 
+  // ── bfcache recovery ──────────────────────────────────────────────────────
+  // Stripe Checkout is a full page navigation away (window.location.href),
+  // and pressing the browser's Back button on Stripe's page restores this
+  // SPA from the bfcache instead of doing a real reload — meaning the JS
+  // heap comes back exactly as it was left, mid-checkout, with isLoading
+  // (and any other in-flight state) frozen at "true" forever. There's no
+  // pending fetch left to ever resolve it, so the app sits on the spinner
+  // permanently. The 'pageshow' event's persisted flag tells us this was a
+  // bfcache restore rather than a fresh load; forcing a real reload here
+  // boots the app clean (back to AuthScreen, since there's no session yet)
+  // instead of trying to individually patch every flag that could be stuck.
+  useEffect(() => {
+    const handlePageShow = (event) => {
+      if (event.persisted) {
+        window.location.reload();
+      }
+    };
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
+
   // ── Browser back-button handling ─────────────────────────────────────────
   // The app never touches browser history — every screen change is just
   // React state — so by default the Back button has nothing local to undo
