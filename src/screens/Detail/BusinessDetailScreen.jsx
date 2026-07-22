@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   ArrowLeft, MapPin, Building, CheckCircle, Package, UtensilsCrossed,
   User, ThumbsUp, ThumbsDown, Plus, ClipboardList, Navigation, X,
@@ -49,8 +49,12 @@ export const SourceBadge = ({ isOwner }) => (
 /* -------------------------------------------------------------------------- */
 /* MAP MODAL                                                                   */
 /* -------------------------------------------------------------------------- */
-
-const MapModal = ({ visible, address, businessName, onClose }) => {
+// ── FIX: previously this only ever geocoded/queried `address`, so it always
+// showed the business's registered street address — never the courier entry
+// pin (which is frequently a different spot: a mall entrance, side gate,
+// loading dock, etc). It now accepts an optional `entryPin` and, when
+// present, centers/queries on the pin's actual coordinates instead.
+const MapModal = ({ visible, address, businessName, entryPin, onClose }) => {
   const [mapLoading, setMapLoading] = useState(true);
   const [mapError, setMapError] = useState(false);
 
@@ -65,12 +69,16 @@ const MapModal = ({ visible, address, businessName, onClose }) => {
     return () => window.removeEventListener("keydown", handler);
   }, [visible, onClose]);
 
-  const encodedAddress = encodeURIComponent(address);
-  const mapSrc = `https://www.google.com/maps/embed/v1/place?key=${GOOGLE_MAPS_EMBED_API_KEY}&q=${encodedAddress}&zoom=16`;
+  const hasPin = entryPin?.lat != null && entryPin?.lng != null;
+  // Prefer the actual entry pin coordinates over the plain address so the
+  // map centers on where the courier should actually go.
+  const mapQuery = hasPin ? `${entryPin.lat},${entryPin.lng}` : address;
+  const encodedQuery = encodeURIComponent(mapQuery);
+  const mapSrc = `https://www.google.com/maps/embed/v1/place?key=${GOOGLE_MAPS_EMBED_API_KEY}&q=${encodedQuery}&zoom=${hasPin ? 18 : 16}`;
 
   const openInMaps = () => {
     window.open(
-      `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
+      `https://www.google.com/maps/search/?api=1&query=${encodedQuery}`,
       "_blank", "noopener,noreferrer",
     );
   };
@@ -84,7 +92,9 @@ const MapModal = ({ visible, address, businessName, onClose }) => {
           <div className="bds-map-header-icon"><Navigation size={16} /></div>
           <div className="bds-map-header-text">
             <p className="bds-map-header-title">{businessName}</p>
-            <p className="bds-map-header-subtitle">{address}</p>
+            <p className="bds-map-header-subtitle">
+              {hasPin ? (entryPin.label || "Courier Entry Point") : address}
+            </p>
           </div>
         </div>
         <div className="bds-map-header-actions">
@@ -135,6 +145,10 @@ const GlobalBusinessScreen = ({
   const { user, token } = useAuthContext();
   const [showMap, setShowMap] = useState(false);
   const [claimedLocalId, setClaimedLocalId] = useState(null);
+  // ── Tracks the current entry pin so MapModal can center on it. Starts
+  // null (global businesses have no pin yet) and gets filled in as soon as
+  // EntryPinWidget reports one back via onPinChange.
+  const [currentPin, setCurrentPin] = useState(null);
 
   // Note: browser Back-button handling is centralized in App.js (a single
   // popstate listener there resets navigation to home/root). This screen no
@@ -180,7 +194,13 @@ const GlobalBusinessScreen = ({
 
   return (
     <div className="bds-screen">
-      <MapModal visible={showMap} address={business.address} businessName={business.name} onClose={() => setShowMap(false)} />
+      <MapModal
+        visible={showMap}
+        address={business.address}
+        businessName={business.name}
+        entryPin={currentPin}
+        onClose={() => setShowMap(false)}
+      />
 
       <div className="bds-header-wrap">
         <div className="bds-header">
@@ -217,6 +237,7 @@ const GlobalBusinessScreen = ({
           isGlobal
           globalMeta={{ placeId, name: business.name, type: businessType, coordinates: resolvedCoords }}
           onGlobalClaimed={(newId) => { setClaimedLocalId(newId); onGlobalClaimed?.(newId, business); }}
+          onPinChange={setCurrentPin}
           userName={user?.name}
         />
 
@@ -356,6 +377,11 @@ function BusinessDetailContent({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showMap, setShowMap] = useState(false);
+  // ── Tracks the current entry pin so MapModal can center on it. Seeded
+  // from the fetched business's entryPin once loaded, then kept in sync
+  // live via EntryPinWidget's onPinChange whenever the user edits/removes it.
+  const [currentPin, setCurrentPin] = useState(null);
+  const pinSeededRef = useRef(false);
 
   const CACHE_KEY = `business_detail_${String(business.id || business._id || "")}`;
   const CACHE_TTL = 0.25 * 60 * 1000;
@@ -397,6 +423,16 @@ function BusinessDetailContent({
 
     load();
   }, [businessId]);
+
+  // Seed currentPin from the fetched business exactly once — after that,
+  // EntryPinWidget's onPinChange is the source of truth (so a background
+  // cache/network refresh doesn't stomp a pin the user just edited).
+  useEffect(() => {
+    if (detailedBusiness && !pinSeededRef.current) {
+      setCurrentPin(detailedBusiness.entryPin ?? null);
+      pinSeededRef.current = true;
+    }
+  }, [detailedBusiness]);
 
   const handleContributionPress = (contribution) => {
     const instructionId = contribution.id || contribution._id;
@@ -468,7 +504,13 @@ function BusinessDetailContent({
 
   return (
     <div className="bds-screen">
-      <MapModal visible={showMap} address={detailedBusiness.address} businessName={detailedBusiness.name} onClose={() => setShowMap(false)} />
+      <MapModal
+        visible={showMap}
+        address={detailedBusiness.address}
+        businessName={detailedBusiness.name}
+        entryPin={currentPin}
+        onClose={() => setShowMap(false)}
+      />
 
       <div className="bds-header-wrap">
         <div className="bds-header">
@@ -510,6 +552,7 @@ function BusinessDetailContent({
           businessAddress={detailedBusiness.address}
           businessCoordinates={detailedBusiness.coordinates ?? null}
           initialPin={entryPin}
+          onPinChange={setCurrentPin}
           userName={user?.name}
         />
 

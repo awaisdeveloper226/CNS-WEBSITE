@@ -187,6 +187,10 @@ const EntryPinWidget = ({
   isGlobal = false,
   globalMeta,
   onGlobalClaimed,
+  // ── NEW: lets the parent screen (BusinessDetailScreen) know the current
+  // pin so it can pass real coordinates into the "View on Map" MapModal
+  // instead of that modal only ever knowing the business's street address.
+  onPinChange,
 }) => {
   const [pin, setPin] = useState(initialPin);
   const [modalOpen, setModalOpen] = useState(false);
@@ -202,6 +206,12 @@ const EntryPinWidget = ({
   const [saveError, setSaveError] = useState(null);
 
   const claimedBusinessIdRef = useRef(null);
+
+  // ── Notify parent whenever the pin changes (initial load, save, remove) ──
+  useEffect(() => {
+    onPinChange?.(pin);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pin]);
 
   // ── Resolve map center ─────────────────────────────────────────────────
   useEffect(() => {

@@ -1008,7 +1008,7 @@ export default function UploadFlowScreen({ onBack, onComplete, initialBusiness =
             </div>
 
             {/* CATEGORY — matches the app's Parking / Navigation / Delivery selector */}
-            <label className="form-label">Instruction Category *</label>
+            {/* <label className="form-label">Instruction Category *</label>
             <div className="delivery-type-buttons">
               {[
                 { key: "parking", label: "Parking", icon: Icons.ParkingSquare },
@@ -1024,7 +1024,7 @@ export default function UploadFlowScreen({ onBack, onComplete, initialBusiness =
                   <span>{label}</span>
                 </button>
               ))}
-            </div>
+            </div> */}
 
             {/* MEDIA */}
             <label className="form-label">Media (Optional)</label>
