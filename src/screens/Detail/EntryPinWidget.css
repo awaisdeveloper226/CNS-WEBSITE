@@ -140,6 +140,7 @@
   border: none;
   pointer-events: none;
   display: block;
+  cursor: pointer; 
 }
 
 .epw-tile-edit-nudge {
