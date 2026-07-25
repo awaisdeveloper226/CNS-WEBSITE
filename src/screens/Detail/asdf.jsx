@@ -12,6 +12,7 @@ import {
   LocateFixed,
 } from "lucide-react";
 import { API_ENDPOINTS } from "../../constants/network";
+import { pushBackLevel, popBackLevelSilently } from "../../utils/backNav";
 import "./EntryPinWidget.css";
 
 const GOOGLE_MAPS_JS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_JS_API_KEY;
@@ -206,6 +207,7 @@ const EntryPinWidget = ({
   const [saveError, setSaveError] = useState(null);
 
   const claimedBusinessIdRef = useRef(null);
+  const backLevelPushedRef = useRef(false);
 
   // ── Notify parent whenever the pin changes (initial load, save, remove) ──
   useEffect(() => {
@@ -240,6 +242,25 @@ const EntryPinWidget = ({
     const handler = (e) => { if (e.key === "Escape") setModalOpen(false); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+  }, [modalOpen]);
+
+  // ── BACK-BUTTON FIX: while the pin editor is open, push a level onto the
+  // shared backNav stack (src/utils/backNav.js). A browser Back press then
+  // just closes the editor (setModalOpen(false)) instead of the app falling
+  // through to App.js's popstate handling and jumping to home. Closing via
+  // Save/Cancel/Escape/Remove all just flip modalOpen to false too, which
+  // releases the level silently — no extra history navigation either way.
+  useEffect(() => {
+    if (modalOpen && !backLevelPushedRef.current) {
+      backLevelPushedRef.current = true;
+      pushBackLevel(() => {
+        backLevelPushedRef.current = false;
+        setModalOpen(false);
+      });
+    } else if (!modalOpen && backLevelPushedRef.current) {
+      backLevelPushedRef.current = false;
+      popBackLevelSilently();
+    }
   }, [modalOpen]);
 
   const openModal = () => {

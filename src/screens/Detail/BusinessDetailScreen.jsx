@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { API_ENDPOINTS } from "../../constants/network";
 import { useAuthContext } from "../../context/AuthContext";
+import { pushBackLevel, popBackLevelSilently } from "../../utils/backNav";
 import EntryPinWidget from "./asdf";
 import "./BusinessDetailScreen.css";
 
@@ -54,9 +55,17 @@ export const SourceBadge = ({ isOwner }) => (
 // pin (which is frequently a different spot: a mall entrance, side gate,
 // loading dock, etc). It now accepts an optional `entryPin` and, when
 // present, centers/queries on the pin's actual coordinates instead.
+//
+// ── BACK-BUTTON FIX: while this modal is open, it now pushes its own level
+// onto the shared backNav stack (see src/utils/backNav.js). A browser Back
+// press while the map is open just closes the map (calls onClose) instead
+// of falling through to App.js's own popstate handling and jumping all the
+// way to home. Closing the modal any other way (X button, Escape, "Open in
+// Maps") releases that level silently — no extra history navigation.
 const MapModal = ({ visible, address, businessName, entryPin, onClose }) => {
   const [mapLoading, setMapLoading] = useState(true);
   const [mapError, setMapError] = useState(false);
+  const backLevelPushedRef = useRef(false);
 
   useEffect(() => {
     if (visible) { setMapLoading(true); setMapError(false); }
@@ -68,6 +77,20 @@ const MapModal = ({ visible, address, businessName, entryPin, onClose }) => {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [visible, onClose]);
+
+  useEffect(() => {
+    if (visible && !backLevelPushedRef.current) {
+      backLevelPushedRef.current = true;
+      pushBackLevel(() => {
+        backLevelPushedRef.current = false;
+        onClose();
+      });
+    } else if (!visible && backLevelPushedRef.current) {
+      backLevelPushedRef.current = false;
+      popBackLevelSilently();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   const hasPin = entryPin?.lat != null && entryPin?.lng != null;
   // Prefer the actual entry pin coordinates over the plain address so the
@@ -150,10 +173,9 @@ const GlobalBusinessScreen = ({
   // EntryPinWidget reports one back via onPinChange.
   const [currentPin, setCurrentPin] = useState(null);
 
-  // Note: browser Back-button handling is centralized in App.js (a single
-  // popstate listener there resets navigation to home/root). This screen no
-  // longer listens for popstate itself — doing so here as well would fire
-  // alongside App.js's handler on the same event and cause double navigation.
+  // Note: browser Back-button handling is centralized via the shared
+  // backNav stack (src/utils/backNav.js) — App.js and MapModal both push
+  // onto it. This screen doesn't need its own popstate listener.
 
   if (claimedLocalId) {
     const upgradedBusiness = { ...business, _id: claimedLocalId, id: claimedLocalId, placeId: undefined };
@@ -388,10 +410,9 @@ function BusinessDetailContent({
     [business.id, business._id],
   );
 
-  // Note: browser Back-button handling is centralized in App.js (a single
-  // popstate listener there resets navigation to home/root). This screen no
-  // longer listens for popstate itself — doing so here as well would fire
-  // alongside App.js's handler on the same event and cause double navigation.
+  // Note: browser Back-button handling is centralized via the shared
+  // backNav stack (src/utils/backNav.js) — App.js and MapModal both push
+  // onto it. This screen doesn't need its own popstate listener.
 
   useEffect(() => {
     if (!businessId) { setError("Invalid business ID"); setLoading(false); return; }

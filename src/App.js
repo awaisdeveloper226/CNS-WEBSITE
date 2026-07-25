@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
 import { API_ENDPOINTS, AUTH_TOKEN_KEY } from "./constants/network";
+import { pushBackLevel, popBackLevelSilently } from "./utils/backNav";
 
 import NavBar from "./components/Navbar/Navbar";
 import HomeScreen from "./screens/Home/HomeScreen";
@@ -144,70 +145,69 @@ function AppInner() {
   // React state — so by default the Back button has nothing local to undo
   // and immediately exits the site. Fix: every time we navigate away from
   // "home" (or, for a guest, away from their one business), push a history
-  // entry, giving Back something to consume first.
-  //
-  // navDepthRef tracks how many entries we've pushed beyond the root — 0,
-  // 1, or 2 — so popstate can undo exactly ONE level instead of always
-  // resetting all the way to home/root. Level 2 is the one special case:
-  // an instruction opened on top of an already-selected business. Popping
-  // that level should reveal the business underneath (selectedBusiness is
-  // never cleared while viewing an instruction — see handleViewInstruction
-  // — so it's still there to fall back onto), not send the user all the
-  // way back to home. Every other transition keeps the original
-  // "any back press resets to root" behavior.
-  const navDepthRef = useRef(0);
+  // level via the shared backNav stack (see src/utils/backNav.js). That
+  // stack also lets OTHER components (the map modal, the entry-pin editor)
+  // push their own levels independently and have them unwind correctly in
+  // LIFO order — e.g. business page -> instruction -> (back) -> business
+  // page -> map modal open -> (back) -> business page -> (back) -> home.
+  const awayFromRootPushedRef = useRef(false);
+  const instructionLevelPushedRef = useRef(false);
 
   useEffect(() => {
     if (isLoading || !user) return;
 
-    const targetDepth = isGuestUser
-      ? ((guestShowExit || showUploadFlow || !!selectedInstruction) ? 1 : 0)
-      : (selectedBusiness && selectedInstruction)
-        ? 2
-        : (tab !== "home" || !!selectedBusiness || showUploadFlow || !!selectedInstruction)
-          ? 1
-          : 0;
+    if (isGuestUser) {
+      // Guests have no "home" — their one business is the root.
+      const isAway = guestShowExit || showUploadFlow || !!selectedInstruction;
 
-    while (navDepthRef.current < targetDepth) {
-      window.history.pushState({ cnsNav: true }, "");
-      navDepthRef.current += 1;
+      if (isAway && !awayFromRootPushedRef.current) {
+        awayFromRootPushedRef.current = true;
+        pushBackLevel(() => {
+          awayFromRootPushedRef.current = false;
+          setGuestShowExit(false);
+          setSelectedInstruction(null);
+          setShowUploadFlow(false);
+        });
+      } else if (!isAway && awayFromRootPushedRef.current) {
+        awayFromRootPushedRef.current = false;
+        popBackLevelSilently();
+      }
+      return;
     }
-    if (targetDepth < navDepthRef.current) {
-      // State changed via in-app navigation (not a browser back press) —
-      // just resync our tracked depth, don't touch history here.
-      navDepthRef.current = targetDepth;
+
+    const isAway = tab !== "home" || !!selectedBusiness || showUploadFlow || !!selectedInstruction;
+    // An instruction opened on top of an already-selected business is its
+    // own extra level — popping it should reveal the business underneath
+    // (selectedBusiness is never cleared while viewing an instruction; see
+    // handleViewInstruction), not send the user all the way back to home.
+    const hasInstructionLevel = !!selectedBusiness && !!selectedInstruction;
+
+    if (isAway && !awayFromRootPushedRef.current) {
+      awayFromRootPushedRef.current = true;
+      pushBackLevel(() => {
+        awayFromRootPushedRef.current = false;
+        setTab("home");
+        setSelectedBusiness(null);
+        setShowUploadFlow(false);
+        setSelectedInstruction(null);
+        setGuestShowExit(false);
+      });
+    } else if (!isAway && awayFromRootPushedRef.current) {
+      awayFromRootPushedRef.current = false;
+      popBackLevelSilently();
+    }
+
+    if (hasInstructionLevel && !instructionLevelPushedRef.current) {
+      instructionLevelPushedRef.current = true;
+      pushBackLevel(() => {
+        instructionLevelPushedRef.current = false;
+        setSelectedInstruction(null);
+      });
+    } else if (!hasInstructionLevel && instructionLevelPushedRef.current) {
+      instructionLevelPushedRef.current = false;
+      popBackLevelSilently();
     }
   }, [isLoading, user, isGuestUser, tab, selectedBusiness, showUploadFlow, selectedInstruction, guestShowExit]);
-
-  useEffect(() => {
-    const handlePopState = () => {
-      if (isGuestUser) {
-        // Guests have no "home" — their one business is the root.
-        navDepthRef.current = 0;
-        setGuestShowExit(false);
-        setSelectedInstruction(null);
-        setShowUploadFlow(false);
-        return;
-      }
-
-      if (navDepthRef.current >= 2) {
-        // Was viewing an instruction on top of a business — pop back to
-        // just the business, not all the way to home.
-        navDepthRef.current = 1;
-        setSelectedInstruction(null);
-        return;
-      }
-
-      navDepthRef.current = 0;
-      setTab("home");
-      setSelectedBusiness(null);
-      setShowUploadFlow(false);
-      setSelectedInstruction(null);
-      setGuestShowExit(false);
-    };
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [isGuestUser]);
 
   // ── Share-link state ─────────────────────────────────────────────────────
   // status: 'idle' | 'loading' | 'ready' | 'done' | 'error'
