@@ -1,6 +1,12 @@
 // screens/Detail/EntryPinWidget.jsx
 
-import React, { useState, useEffect, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import {
   Crosshair,
   Edit3,
@@ -111,11 +117,53 @@ function PreviewMap({ lat, lng }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Editor Map (interactive — click to place / drag to move)
+//
+// ── FIX: previously the marker could only be placed/moved by clicking or
+// dragging directly on the map — there was no way for the parent component
+// to programmatically place a pin (e.g. from a "My Location" button). It now
+// exposes an imperative `setMarker(lat, lng)` method via ref, which both the
+// initial-pin restore logic and the parent's "My Location" handler use, so
+// the visible red marker always stays in sync with pendingCoord.
 // ─────────────────────────────────────────────────────────────────────────────
-function EditorMap({ centerLat, centerLng, existingLat, existingLng, onMove, onReady }) {
+const EditorMap = forwardRef(function EditorMap(
+  { centerLat, centerLng, existingLat, existingLng, onMove, onReady },
+  ref
+) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
+
+  // Places or moves the marker on the map. `notify` controls whether we
+  // report the new coordinate back up to the parent via onMove — click/drag
+  // interactions should notify, but the imperative setMarker() call from
+  // "My Location" doesn't need to (the parent already has the coordinate,
+  // since it's the one calling setMarker in the first place).
+  const placeOrMove = (latLng, { notify } = { notify: true }) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (markerRef.current) {
+      markerRef.current.setPosition(latLng);
+    } else {
+      markerRef.current = new window.google.maps.Marker({
+        position: latLng,
+        map,
+        draggable: true,
+        animation: window.google.maps.Animation.DROP,
+      });
+      markerRef.current.addListener("dragend", () => {
+        const p = markerRef.current.getPosition();
+        onMove({ lat: p.lat(), lng: p.lng() });
+      });
+    }
+
+    map.panTo(latLng);
+    map.setZoom(18);
+
+    if (notify) {
+      onMove({ lat: latLng.lat(), lng: latLng.lng() });
+    }
+  };
 
   useEffect(() => {
     loadGoogleMapsApi()
@@ -134,30 +182,10 @@ function EditorMap({ centerLat, centerLng, existingLat, existingLng, onMove, onR
         });
         mapInstanceRef.current = map;
 
-        const placeOrMove = (latLng) => {
-          if (markerRef.current) {
-            markerRef.current.setPosition(latLng);
-          } else {
-            markerRef.current = new window.google.maps.Marker({
-              position: latLng,
-              map,
-              draggable: true,
-              animation: window.google.maps.Animation.DROP,
-            });
-            markerRef.current.addListener("dragend", () => {
-              const p = markerRef.current.getPosition();
-              onMove({ lat: p.lat(), lng: p.lng() });
-            });
-          }
-          map.panTo(latLng);
-          map.setZoom(18);
-          onMove({ lat: latLng.lat(), lng: latLng.lng() });
-        };
-
         // Restore existing pin if present
         if (existingLat != null && existingLng != null) {
           const latLng = new window.google.maps.LatLng(existingLat, existingLng);
-          placeOrMove(latLng);
+          placeOrMove(latLng, { notify: false });
         }
 
         map.addListener("click", (e) => placeOrMove(e.latLng));
@@ -171,10 +199,20 @@ function EditorMap({ centerLat, centerLng, existingLat, existingLng, onMove, onR
       mapInstanceRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);  // mount-once; centerLat/Lng are stable per open
+  }, []); // mount-once; centerLat/Lng are stable per open
+
+  // Exposed to the parent so "My Location" (and anything else) can push a
+  // coordinate straight into the map, not just read one out of it.
+  useImperativeHandle(ref, () => ({
+    setMarker: (lat, lng) => {
+      if (!window.google?.maps) return;
+      const latLng = new window.google.maps.LatLng(lat, lng);
+      placeOrMove(latLng, { notify: false });
+    },
+  }));
 
   return <div ref={mapRef} className="epw-map-div" />;
-}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EntryPinWidget
@@ -208,6 +246,9 @@ const EntryPinWidget = ({
 
   const claimedBusinessIdRef = useRef(null);
   const backLevelPushedRef = useRef(false);
+  // ── Handle onto the live EditorMap instance so "My Location" can place
+  // the marker directly, instead of the old (non-functional) window global.
+  const editorMapRef = useRef(null);
 
   // ── Notify parent whenever the pin changes (initial load, save, remove) ──
   useEffect(() => {
@@ -278,11 +319,9 @@ const EntryPinWidget = ({
       ({ coords: { latitude: lat, longitude: lng } }) => {
         setPendingCoord({ lat, lng });
         setLocating(false);
-        // Pan the map instance if available
-        if (window.__epwEditorMap) {
-          const latLng = new window.google.maps.LatLng(lat, lng);
-          window.__epwEditorMap.panTo(latLng);
-        }
+        // Push the coordinate straight into the map so the marker actually
+        // appears/moves immediately, instead of only updating state.
+        editorMapRef.current?.setMarker(lat, lng);
       },
       () => { setLocating(false); }
     );
@@ -479,6 +518,7 @@ const EntryPinWidget = ({
                   </div>
                 )}
                 <EditorMap
+                  ref={editorMapRef}
                   centerLat={mapCenter.lat}
                   centerLng={mapCenter.lng}
                   existingLat={pin?.lat ?? null}
