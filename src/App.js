@@ -143,43 +143,67 @@ function AppInner() {
   // The app never touches browser history — every screen change is just
   // React state — so by default the Back button has nothing local to undo
   // and immediately exits the site. Fix: every time we navigate away from
-  // "home" (or, for a guest, away from their one business), push a single
-  // history entry. That gives Back something to consume first. The
-  // popstate handler below is intentionally simple — ANY back press resets
-  // all the way to home/root, rather than trying to replicate a full
-  // per-screen history stack.
-  const pushedAwayFromRootRef = useRef(false);
+  // "home" (or, for a guest, away from their one business), push a history
+  // entry, giving Back something to consume first.
+  //
+  // navDepthRef tracks how many entries we've pushed beyond the root — 0,
+  // 1, or 2 — so popstate can undo exactly ONE level instead of always
+  // resetting all the way to home/root. Level 2 is the one special case:
+  // an instruction opened on top of an already-selected business. Popping
+  // that level should reveal the business underneath (selectedBusiness is
+  // never cleared while viewing an instruction — see handleViewInstruction
+  // — so it's still there to fall back onto), not send the user all the
+  // way back to home. Every other transition keeps the original
+  // "any back press resets to root" behavior.
+  const navDepthRef = useRef(0);
 
   useEffect(() => {
     if (isLoading || !user) return;
 
-    const isAwayFromRoot = isGuestUser
-      ? (guestShowExit || !!selectedInstruction || showUploadFlow)
-      : (tab !== "home" || !!selectedBusiness || showUploadFlow || !!selectedInstruction);
+    const targetDepth = isGuestUser
+      ? ((guestShowExit || showUploadFlow || !!selectedInstruction) ? 1 : 0)
+      : (selectedBusiness && selectedInstruction)
+        ? 2
+        : (tab !== "home" || !!selectedBusiness || showUploadFlow || !!selectedInstruction)
+          ? 1
+          : 0;
 
-    if (isAwayFromRoot && !pushedAwayFromRootRef.current) {
+    while (navDepthRef.current < targetDepth) {
       window.history.pushState({ cnsNav: true }, "");
-      pushedAwayFromRootRef.current = true;
-    } else if (!isAwayFromRoot) {
-      pushedAwayFromRootRef.current = false;
+      navDepthRef.current += 1;
+    }
+    if (targetDepth < navDepthRef.current) {
+      // State changed via in-app navigation (not a browser back press) —
+      // just resync our tracked depth, don't touch history here.
+      navDepthRef.current = targetDepth;
     }
   }, [isLoading, user, isGuestUser, tab, selectedBusiness, showUploadFlow, selectedInstruction, guestShowExit]);
 
   useEffect(() => {
     const handlePopState = () => {
-      pushedAwayFromRootRef.current = false;
       if (isGuestUser) {
         // Guests have no "home" — their one business is the root.
+        navDepthRef.current = 0;
         setGuestShowExit(false);
         setSelectedInstruction(null);
         setShowUploadFlow(false);
-      } else {
-        setTab("home");
-        setSelectedBusiness(null);
-        setShowUploadFlow(false);
-        setSelectedInstruction(null);
-        setGuestShowExit(false);
+        return;
       }
+
+      if (navDepthRef.current >= 2) {
+        // Was viewing an instruction on top of a business — pop back to
+        // just the business, not all the way to home.
+        navDepthRef.current = 1;
+        setSelectedInstruction(null);
+        return;
+      }
+
+      navDepthRef.current = 0;
+      setTab("home");
+      setSelectedBusiness(null);
+      setShowUploadFlow(false);
+      setSelectedInstruction(null);
+      setGuestShowExit(false);
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
