@@ -121,13 +121,14 @@ function uploadToCloudinary(file, resourceType, { signal, onProgress } = {}) {
   });
 }
 
-// ── Cloudinary video URL, transformed for smooth streaming playback ───────
-// Inserting q_auto (Cloudinary picks the smallest quality that still looks
-// good), f_auto (best codec/container for the requesting browser) and a
-// width cap means the player streams a fraction of the original upload's
-// bytes. This is what actually fixes "plays a second, pauses, buffers,
-// plays again" — the file being played is small, not the original 50-100MB
-// phone recording.
+// ── Cloudinary video URL, transformed to a small preview size ─────────────
+// IMPORTANT: this is only used for the invisible off-screen thumbnail
+// capture in VideoThumbnail below, never for actual visible playback. A
+// transformed video that Cloudinary hasn't transcoded before yet gets
+// transcoded live and streamed back with no known final size, which reads
+// to the browser as duration climbing / a jumpy scrubber — fine for a
+// hidden capture element nobody watches, but not acceptable for the real
+// player (see LightboxOverlay, which intentionally uses the raw URL).
 function optimizedVideoUrl(url, width = 960) {
   if (!url || !url.includes("/upload/")) return url;
   return url.replace("/upload/", `/upload/q_auto,f_auto,w_${width},c_limit/`);
@@ -1498,15 +1499,20 @@ function LightboxOverlay({
         {item.type === "image" ? (
           <img key={index} src={item.url} alt="" className="ids-lightbox-img" />
         ) : (
-          // Streamed through Cloudinary's q_auto/f_auto transform (see
-          // optimizedVideoUrl above) instead of the raw uploaded file — this
-          // is what stops the "plays a second, buffers, plays again" pattern,
-          // since the browser is now downloading a file that's a fraction of
-          // the original size. preload="auto" tells it to start fetching the
-          // moment the lightbox opens rather than waiting.
+          // Deliberately the RAW uploaded URL here, not optimizedVideoUrl().
+          // A transformed (q_auto/f_auto/w_...) video that Cloudinary hasn't
+          // transcoded before gets transcoded live and streamed back chunk by
+          // chunk with no known final size — that's exactly what caused the
+          // duration to climb second-by-second and the scrubber/controls to
+          // jump around. The original file has full, correct metadata the
+          // instant it starts loading, so playback and the scrubber behave
+          // normally. It costs a little more bandwidth than a transformed
+          // version would, but it's the only way to get clean, immediate
+          // controls for every video, every time — not just after the first
+          // viewer happens to warm Cloudinary's cache.
           <video
             key={index}
-            src={optimizedVideoUrl(item.url)}
+            src={item.url}
             controls
             autoPlay
             preload="auto"
