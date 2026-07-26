@@ -303,7 +303,8 @@ export default function InstructionDetailScreen({
   const [error, setError] = useState(null);
 
   // Keeps the latest server-confirmed instruction available to async
-  // callbacks (background video sync) without them closing over stale state.
+  // callbacks (background photo/video sync) without them closing over stale
+  // state.
   const instructionRef = useRef(null);
   useEffect(() => {
     instructionRef.current = instruction;
@@ -332,6 +333,9 @@ export default function InstructionDetailScreen({
   const [isEditing, setIsEditing] = useState(false);
   const [editedNotes, setEditedNotes] = useState("");
   const [editedType, setEditedType] = useState("");
+  // editedPhotos items: { id, localUrl, url, uploading }
+  // localUrl is a blob: object URL for instant preview; url is the Cloudinary
+  // URL once the background upload finishes. Mirrors editedVideos below.
   const [editedPhotos, setEditedPhotos] = useState([]);
   // editedVideos items: { id, localUrl, url, uploading }
   // localUrl is a blob: object URL for instant preview; url is the Cloudinary
@@ -341,12 +345,23 @@ export default function InstructionDetailScreen({
   const [editedAudioDuration, setEditedAudioDuration] = useState(null);
   const [editedMode, setEditedMode] = useState("write");
   const [savingEdit, setSavingEdit] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  const editedPhotosRef = useRef([]);
+  useEffect(() => {
+    editedPhotosRef.current = editedPhotos;
+  }, [editedPhotos]);
 
   const editedVideosRef = useRef([]);
   useEffect(() => {
     editedVideosRef.current = editedVideos;
   }, [editedVideos]);
+
+  const cancelledPhotoIdsRef = useRef(new Set());
+  const photoControllersRef = useRef(new Map());
+  // Serializes background "attach this finished photo to the saved
+  // instruction" calls so two finishing close together don't clobber
+  // each other's writes.
+  const photoSyncChainRef = useRef(Promise.resolve());
 
   const cancelledVideoIdsRef = useRef(new Set());
   const videoControllersRef = useRef(new Map());
@@ -358,6 +373,9 @@ export default function InstructionDetailScreen({
   // Revoke any blob: object URLs still around when the screen unmounts.
   useEffect(() => {
     return () => {
+      editedPhotosRef.current.forEach((p) => {
+        if (p.localUrl?.startsWith("blob:")) URL.revokeObjectURL(p.localUrl);
+      });
       editedVideosRef.current.forEach((v) => {
         if (v.localUrl?.startsWith("blob:")) URL.revokeObjectURL(v.localUrl);
       });
@@ -466,6 +484,50 @@ export default function InstructionDetailScreen({
     }
   };
 
+  // ── Background photo sync ─────────────────────────────────────────────────
+  // Called the moment a photo finishes uploading to Cloudinary, whether the
+  // edit form is still open or was already saved/closed. Attaches the photo
+  // to whatever is currently persisted on the server, without requiring the
+  // user to hit Save again. Mirrors queueVideoAppend below.
+  const queuePhotoAppend = (url) => {
+    photoSyncChainRef.current = photoSyncChainRef.current
+      .then(async () => {
+        const current = instructionRef.current;
+        if (!current || !token) return;
+        const updatedPhotos = [...(current.photos || []), url];
+        try {
+          const res = await fetch(
+            API_ENDPOINTS.CONTRIBUTION_UPDATE(instructionId),
+            {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                notes: current.notes || "",
+                type: current.type,
+                photos: updatedPhotos,
+                videos: current.videos || [],
+                audioUrl: current.audioUrl || null,
+                audioDuration: current.audioDuration ?? null,
+              }),
+            },
+          );
+          const data = await res.json();
+          if (res.ok) {
+            setInstruction((prev) =>
+              prev ? { ...prev, photos: data.photos ?? updatedPhotos } : prev,
+            );
+          }
+        } catch (_) {
+          // Best-effort — the photo is safely uploaded on Cloudinary either
+          // way and will attach next time the user hits Save.
+        }
+      })
+      .catch(() => {});
+  };
+
   // ── Background video sync ─────────────────────────────────────────────────
   // Called the moment a video finishes uploading to Cloudinary, whether the
   // edit form is still open or was already saved/closed. Attaches the video
@@ -523,9 +585,13 @@ export default function InstructionDetailScreen({
     }
     setSavingEdit(true);
     try {
-      // Only videos that have actually finished uploading go in now — any
-      // still in progress keep uploading in the background and attach
-      // themselves via queueVideoAppend the moment they're done.
+      // Only photos/videos that have actually finished uploading go in now —
+      // any still in progress keep uploading in the background and attach
+      // themselves via queuePhotoAppend / queueVideoAppend the moment
+      // they're done.
+      const completedPhotoUrls = editedPhotos
+        .filter((p) => p.url)
+        .map((p) => p.url);
       const completedVideoUrls = editedVideos
         .filter((v) => v.url)
         .map((v) => v.url);
@@ -541,7 +607,7 @@ export default function InstructionDetailScreen({
           body: JSON.stringify({
             notes: editedMode === "write" ? editedNotes.trim() : "",
             type: editedType,
-            photos: editedPhotos,
+            photos: completedPhotoUrls,
             videos: completedVideoUrls,
             audioUrl: editedMode === "record" ? editedAudioUrl : null,
             audioDuration: editedMode === "record" ? editedAudioDuration : null,
@@ -578,21 +644,60 @@ export default function InstructionDetailScreen({
     }
   };
 
-  const handleAddPhoto = async (e) => {
+  // Fire-and-forget, one placeholder per file: each selected photo shows up
+  // instantly as its own local preview and uploads in the background,
+  // independently of the others. The user can hit Save immediately —
+  // completed photo URLs go in right away, and any still uploading attach
+  // themselves (via queuePhotoAppend) the moment they finish, whether or not
+  // the edit form is still open. Mirrors handleAddVideo below.
+  const handleAddPhoto = (e) => {
     const files = Array.from(e.target.files);
+    e.target.value = "";
     if (!files.length) return;
-    setUploadingPhoto(true);
-    try {
-      const urls = await Promise.all(
-        files.map((f) => uploadToCloudinary(f, "image")),
-      );
-      setEditedPhotos((prev) => [...prev, ...urls]);
-    } catch (err) {
-      alert("Upload failed: " + err.message);
-    } finally {
-      setUploadingPhoto(false);
-      e.target.value = "";
-    }
+
+    files.forEach((file) => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const localUrl = URL.createObjectURL(file);
+      setEditedPhotos((prev) => [
+        ...prev,
+        { id, localUrl, url: null, uploading: true },
+      ]);
+
+      const controller = new AbortController();
+      photoControllersRef.current.set(id, controller);
+
+      uploadToCloudinary(file, "image", controller.signal)
+        .then((url) => {
+          if (cancelledPhotoIdsRef.current.has(id)) return;
+          setEditedPhotos((prev) =>
+            prev.map((p) => (p.id === id ? { ...p, url, uploading: false } : p)),
+          );
+          queuePhotoAppend(url);
+        })
+        .catch((err) => {
+          if (!cancelledPhotoIdsRef.current.has(id)) {
+            alert("Photo upload failed: " + err.message);
+            setEditedPhotos((prev) => prev.filter((p) => p.id !== id));
+          }
+        })
+        .finally(() => {
+          photoControllersRef.current.delete(id);
+        });
+    });
+  };
+
+  const handleRemovePhoto = (id) => {
+    cancelledPhotoIdsRef.current.add(id);
+    const controller = photoControllersRef.current.get(id);
+    if (controller) controller.abort();
+
+    setEditedPhotos((prev) => {
+      const item = prev.find((p) => p.id === id);
+      if (item?.localUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(item.localUrl);
+      }
+      return prev.filter((p) => p.id !== id);
+    });
   };
 
   // Fire-and-forget: the video shows up instantly as a local preview and
@@ -768,25 +873,38 @@ export default function InstructionDetailScreen({
               {/* Photos */}
               <p className="ids-edit-label">Photos</p>
               <div className="ids-media-row">
-                {editedPhotos.map((url, i) => (
-                  <div key={i} className="ids-media-thumb">
-                    <img src={url} alt="" className="ids-media-thumb-img" />
+                {editedPhotos.map((p) => (
+                  <div key={p.id} className="ids-media-thumb">
+                    <img
+                      src={p.url || p.localUrl}
+                      alt=""
+                      className="ids-media-thumb-img"
+                    />
+                    {p.uploading && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          borderRadius: 8,
+                          background: "rgba(0,0,0,0.45)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <span className="ids-spinner ids-spinner-white" />
+                      </div>
+                    )}
                     <button
                       className="ids-media-remove"
-                      onClick={() =>
-                        setEditedPhotos((p) => p.filter((_, j) => j !== i))
-                      }
+                      onClick={() => handleRemovePhoto(p.id)}
                     >
                       <X size={10} color="#fff" />
                     </button>
                   </div>
                 ))}
                 <label className="ids-media-add">
-                  {uploadingPhoto ? (
-                    <span className="ids-spinner" />
-                  ) : (
-                    <Camera size={22} color="#9ca3af" />
-                  )}
+                  <Camera size={22} color="#9ca3af" />
                   <input
                     type="file"
                     accept="image/*"
@@ -911,7 +1029,7 @@ export default function InstructionDetailScreen({
                 <button
                   className="ids-save-btn"
                   onClick={handleSaveEdit}
-                  disabled={savingEdit || uploadingPhoto}
+                  disabled={savingEdit}
                 >
                   {savingEdit ? (
                     <span className="ids-spinner ids-spinner-white" />
@@ -936,7 +1054,14 @@ export default function InstructionDetailScreen({
                     setEditedType(
                       instruction.type || "Courier/Parcel Delivery",
                     );
-                    setEditedPhotos(instruction.photos ?? []);
+                    setEditedPhotos(
+                      (instruction.photos ?? []).map((url) => ({
+                        id: url,
+                        localUrl: url,
+                        url,
+                        uploading: false,
+                      })),
+                    );
                     setEditedVideos(
                       (instruction.videos ?? []).map((url) => ({
                         id: url,
