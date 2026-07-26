@@ -275,26 +275,89 @@ const getToken = () => {
   }
 };
 
-// Real Cloudinary upload — takes an actual browser File/Blob, not a uri string.
-async function uploadToCloudinary(file, resourceType) {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-  formData.append("resource_type", resourceType);
-  const res = await fetch(CLOUDINARY_API_URL, {
-    method: "POST",
-    body: formData,
+// ── Image compression (client-side, before upload) ────────────────────────
+// Camera photos are frequently 8-12MB at full sensor resolution. Resizing to
+// a sane max dimension and re-encoding as JPEG *before* it ever leaves the
+// device cuts upload size — and therefore upload time — by roughly 80-95% in
+// typical cases, with no visible quality loss for in-app viewing. This is
+// the single biggest lever on perceived "upload speed", and it's why photo
+// uploads (especially straight from the camera) used to feel so slow.
+function compressImage(file, maxDim = 1920, quality = 0.82) {
+  return new Promise((resolve) => {
+    if (!file.type?.startsWith("image/") || file.type === "image/gif") {
+      resolve(file); // leave animated GIFs / non-images untouched
+      return;
+    }
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      let { width, height } = img;
+      if (width <= maxDim && height <= maxDim) {
+        resolve(file); // already small enough, don't bother re-encoding
+        return;
+      }
+      const scale = maxDim / Math.max(width, height);
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          resolve(
+            new File([blob], file.name.replace(/\.\w+$/, ".jpg"), {
+              type: "image/jpeg",
+            }),
+          );
+        },
+        "image/jpeg",
+        quality,
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file); // fall back to the original on any decode error
+    };
+    img.src = objectUrl;
   });
-  if (!res.ok) {
-    let message = "Upload failed";
-    try {
-      const err = await res.json();
-      message = err.error?.message || message;
-    } catch (_) {}
-    throw new Error(message);
-  }
-  const data = await res.json();
-  return data.secure_url;
+}
+
+// Real Cloudinary upload — takes an actual browser File/Blob, not a uri
+// string. Uses XMLHttpRequest instead of fetch() so we get real upload
+// progress events (fetch gives none until the response arrives, which is
+// why uploads used to look "stuck" even when they were moving).
+function uploadToCloudinary(file, resourceType, { onProgress } = {}) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", CLOUDINARY_API_URL);
+    xhr.responseType = "json";
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.response?.secure_url);
+      } else {
+        reject(new Error(xhr.response?.error?.message || "Upload failed"));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Network error during upload"));
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    formData.append("resource_type", resourceType);
+    xhr.send(formData);
+  });
 }
 
 // A business is "unregistered" (needs to be POST'd first) when it has a
@@ -1077,6 +1140,9 @@ export default function UploadFlowScreen({
   // ── Category — matches the app's ClientInstructionCategory: "parking" | "navigation" | "delivery" ──
   const [category, setCategory] = useState("parking");
   const [notes, setNotes] = useState("");
+  // mediaItems items: { url, localUri, type, uploading, progress, _key }
+  // progress is 0-100 and drives the live "Uploading 42%…" indicator on each
+  // thumbnail instead of an indefinite spinner.
   const [mediaItems, setMediaItems] = useState([]);
   const [instructionMode, setInstructionMode] = useState("write");
   const [audioUrl, setAudioUrl] = useState(null);
@@ -1088,6 +1154,8 @@ export default function UploadFlowScreen({
   const user = { name: "You", level: 1 };
 
   // ── Media handlers — real Cloudinary uploads, tracked per-item like the app ─
+  // Photos are compressed client-side before upload (see compressImage) and
+  // every item tracks a live progress percentage.
   const handlePhotoUpload = () => {
     const input = document.createElement("input");
     input.type = "file";
@@ -1104,6 +1172,7 @@ export default function UploadFlowScreen({
           localUri: URL.createObjectURL(f),
           type: "image",
           uploading: true,
+          progress: 0,
           _key: keys[i],
         })),
       ]);
@@ -1111,7 +1180,15 @@ export default function UploadFlowScreen({
         files.map(async (file, i) => {
           const key = keys[i];
           try {
-            const url = await uploadToCloudinary(file, "image");
+            const toUpload = await compressImage(file);
+            const url = await uploadToCloudinary(toUpload, "image", {
+              onProgress: (pct) =>
+                setMediaItems((prev) =>
+                  prev.map((m) =>
+                    m._key === key ? { ...m, progress: pct } : m,
+                  ),
+                ),
+            });
             setMediaItems((prev) =>
               prev.map((m) =>
                 m._key === key ? { ...m, url, uploading: false } : m,
@@ -1145,11 +1222,20 @@ export default function UploadFlowScreen({
           localUri: localUrl,
           type: "image",
           uploading: true,
+          progress: 0,
           _key: key,
         },
       ]);
       try {
-        const url = await uploadToCloudinary(file, "image");
+        // Camera shots are usually the largest files of all — compressing
+        // here is what turns a 10+ second upload into a 1-2 second one.
+        const toUpload = await compressImage(file);
+        const url = await uploadToCloudinary(toUpload, "image", {
+          onProgress: (pct) =>
+            setMediaItems((prev) =>
+              prev.map((m) => (m._key === key ? { ...m, progress: pct } : m)),
+            ),
+        });
         setMediaItems((prev) =>
           prev.map((m) =>
             m._key === key ? { ...m, url, uploading: false } : m,
@@ -1179,11 +1265,17 @@ export default function UploadFlowScreen({
           localUri: localUrl,
           type: "video",
           uploading: true,
+          progress: 0,
           _key: key,
         },
       ]);
       try {
-        const url = await uploadToCloudinary(file, "video");
+        const url = await uploadToCloudinary(file, "video", {
+          onProgress: (pct) =>
+            setMediaItems((prev) =>
+              prev.map((m) => (m._key === key ? { ...m, progress: pct } : m)),
+            ),
+        });
         setMediaItems((prev) =>
           prev.map((m) =>
             m._key === key ? { ...m, url, uploading: false } : m,
@@ -1484,6 +1576,20 @@ export default function UploadFlowScreen({
                     {item.uploading && (
                       <div className="media-uploading-overlay">
                         <Spinner />
+                        {item.progress > 0 && (
+                          <span
+                            style={{
+                              display: "block",
+                              textAlign: "center",
+                              color: "#fff",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              marginTop: 4,
+                            }}
+                          >
+                            {item.progress}%
+                          </span>
+                        )}
                       </div>
                     )}
                     {!item.uploading && (

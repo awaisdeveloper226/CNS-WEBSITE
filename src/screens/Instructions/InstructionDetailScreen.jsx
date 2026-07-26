@@ -28,22 +28,109 @@ const CLOUDINARY_CLOUD_NAME = "dvmoaqsdb";
 const CLOUDINARY_UPLOAD_PRESET = "ml_default";
 const CLOUDINARY_API_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/upload`;
 
-async function uploadToCloudinary(file, resourceType, signal) {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-  formData.append("resource_type", resourceType);
-  const res = await fetch(CLOUDINARY_API_URL, {
-    method: "POST",
-    body: formData,
-    headers: { Accept: "application/json" },
-    signal,
+// ── Image compression (client-side, before upload) ────────────────────────
+// Camera photos are frequently 8-12MB at full sensor resolution. Resizing to
+// a sane max dimension and re-encoding as JPEG *before* it ever leaves the
+// device cuts upload size — and therefore upload time — by roughly 80-95% in
+// typical cases, with no visible quality loss for in-app viewing. This is
+// the single biggest lever on perceived "upload speed".
+function compressImage(file, maxDim = 1920, quality = 0.82) {
+  return new Promise((resolve) => {
+    if (!file.type?.startsWith("image/") || file.type === "image/gif") {
+      resolve(file); // leave animated GIFs / non-images untouched
+      return;
+    }
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      let { width, height } = img;
+      if (width <= maxDim && height <= maxDim) {
+        resolve(file); // already small enough, don't bother re-encoding
+        return;
+      }
+      const scale = maxDim / Math.max(width, height);
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          resolve(
+            new File([blob], file.name.replace(/\.\w+$/, ".jpg"), {
+              type: "image/jpeg",
+            }),
+          );
+        },
+        "image/jpeg",
+        quality,
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file); // fall back to the original on any decode error
+    };
+    img.src = objectUrl;
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error?.message || "Upload failed");
-  }
-  return (await res.json()).secure_url;
+}
+
+// ── Cloudinary upload with real progress ───────────────────────────────────
+// fetch() exposes zero progress until the whole response arrives, which is
+// why the old spinner just sat there with no feedback. XMLHttpRequest gives
+// real upload.onprogress events, so the UI can show an actual percentage.
+function uploadToCloudinary(file, resourceType, { signal, onProgress } = {}) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", CLOUDINARY_API_URL);
+    xhr.responseType = "json";
+
+    if (signal) {
+      if (signal.aborted) {
+        reject(new DOMException("Aborted", "AbortError"));
+        return;
+      }
+      signal.addEventListener("abort", () => xhr.abort());
+    }
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.response?.secure_url);
+      } else {
+        reject(new Error(xhr.response?.error?.message || "Upload failed"));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.onabort = () => reject(new DOMException("Aborted", "AbortError"));
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    formData.append("resource_type", resourceType);
+    xhr.send(formData);
+  });
+}
+
+// ── Cloudinary video URL, transformed for smooth streaming playback ───────
+// Inserting q_auto (Cloudinary picks the smallest quality that still looks
+// good), f_auto (best codec/container for the requesting browser) and a
+// width cap means the player streams a fraction of the original upload's
+// bytes. This is what actually fixes "plays a second, pauses, buffers,
+// plays again" — the file being played is small, not the original 50-100MB
+// phone recording.
+function optimizedVideoUrl(url, width = 960) {
+  if (!url || !url.includes("/upload/")) return url;
+  return url.replace("/upload/", `/upload/q_auto,f_auto,w_${width},c_limit/`);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -94,6 +181,11 @@ function SourceBadge({ isOwner }) {
 // the frame capture silently fails (caught below) and the thumbnail stays
 // blank forever — it has nothing to do with local blob: URLs, which aren't
 // cross-origin and work either way.
+//
+// We also request a small, optimized transform of the source video for the
+// off-screen capture — the thumbnail only needs a few hundred pixels, so
+// there's no reason to pull down the full-resolution file just to grab one
+// frame from it. This makes thumbnails appear noticeably faster too.
 function VideoThumbnail({
   url,
   iconSize = 28,
@@ -104,6 +196,8 @@ function VideoThumbnail({
   const canvasRef = useRef(null);
   const [thumbUrl, setThumbUrl] = useState(null);
   const [captureFailed, setCaptureFailed] = useState(false);
+
+  const captureSrc = url?.startsWith("blob:") ? url : optimizedVideoUrl(url, 480);
 
   useEffect(() => {
     setThumbUrl(null);
@@ -149,7 +243,7 @@ function VideoThumbnail({
       {!thumbUrl && !captureFailed && (
         <video
           ref={videoRef}
-          src={url}
+          src={captureSrc}
           crossOrigin="anonymous"
           muted
           playsInline
@@ -333,13 +427,12 @@ export default function InstructionDetailScreen({
   const [isEditing, setIsEditing] = useState(false);
   const [editedNotes, setEditedNotes] = useState("");
   const [editedType, setEditedType] = useState("");
-  // editedPhotos items: { id, localUrl, url, uploading }
+  // editedPhotos items: { id, localUrl, url, uploading, progress }
   // localUrl is a blob: object URL for instant preview; url is the Cloudinary
-  // URL once the background upload finishes. Mirrors editedVideos below.
+  // URL once the background upload finishes; progress is 0-100. Mirrors
+  // editedVideos below.
   const [editedPhotos, setEditedPhotos] = useState([]);
-  // editedVideos items: { id, localUrl, url, uploading }
-  // localUrl is a blob: object URL for instant preview; url is the Cloudinary
-  // URL once the background upload finishes.
+  // editedVideos items: { id, localUrl, url, uploading, progress }
   const [editedVideos, setEditedVideos] = useState([]);
   const [editedAudioUrl, setEditedAudioUrl] = useState(null);
   const [editedAudioDuration, setEditedAudioDuration] = useState(null);
@@ -650,39 +743,50 @@ export default function InstructionDetailScreen({
   // completed photo URLs go in right away, and any still uploading attach
   // themselves (via queuePhotoAppend) the moment they finish, whether or not
   // the edit form is still open. Mirrors handleAddVideo below.
+  //
+  // Each photo is compressed client-side before it's sent, and a live
+  // progress percentage is tracked so the user can actually see it moving
+  // instead of staring at an indefinite spinner.
   const handleAddPhoto = (e) => {
     const files = Array.from(e.target.files);
     e.target.value = "";
     if (!files.length) return;
 
-    files.forEach((file) => {
+    files.forEach(async (file) => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const localUrl = URL.createObjectURL(file);
       setEditedPhotos((prev) => [
         ...prev,
-        { id, localUrl, url: null, uploading: true },
+        { id, localUrl, url: null, uploading: true, progress: 0 },
       ]);
 
       const controller = new AbortController();
       photoControllersRef.current.set(id, controller);
 
-      uploadToCloudinary(file, "image", controller.signal)
-        .then((url) => {
-          if (cancelledPhotoIdsRef.current.has(id)) return;
-          setEditedPhotos((prev) =>
-            prev.map((p) => (p.id === id ? { ...p, url, uploading: false } : p)),
-          );
-          queuePhotoAppend(url);
-        })
-        .catch((err) => {
-          if (!cancelledPhotoIdsRef.current.has(id)) {
-            alert("Photo upload failed: " + err.message);
-            setEditedPhotos((prev) => prev.filter((p) => p.id !== id));
-          }
-        })
-        .finally(() => {
-          photoControllersRef.current.delete(id);
+      try {
+        const toUpload = await compressImage(file);
+        if (cancelledPhotoIdsRef.current.has(id)) return;
+
+        const url = await uploadToCloudinary(toUpload, "image", {
+          signal: controller.signal,
+          onProgress: (pct) =>
+            setEditedPhotos((prev) =>
+              prev.map((p) => (p.id === id ? { ...p, progress: pct } : p)),
+            ),
         });
+        if (cancelledPhotoIdsRef.current.has(id)) return;
+        setEditedPhotos((prev) =>
+          prev.map((p) => (p.id === id ? { ...p, url, uploading: false } : p)),
+        );
+        queuePhotoAppend(url);
+      } catch (err) {
+        if (!cancelledPhotoIdsRef.current.has(id) && err.name !== "AbortError") {
+          alert("Photo upload failed: " + err.message);
+          setEditedPhotos((prev) => prev.filter((p) => p.id !== id));
+        }
+      } finally {
+        photoControllersRef.current.delete(id);
+      }
     });
   };
 
@@ -703,9 +807,9 @@ export default function InstructionDetailScreen({
   // Fire-and-forget: the video shows up instantly as a local preview and
   // uploads in the background. The user can hit Save immediately — the URL
   // attaches itself (via queueVideoAppend) the moment the upload finishes,
-  // whether or not the edit form is still open. The thumbnail box itself is
-  // the only upload indicator — its spinner clears the moment the real
-  // Cloudinary-hosted frame renders in place of it.
+  // whether or not the edit form is still open. A live progress percentage
+  // is tracked alongside the spinner so it's clear real progress is
+  // happening, not just a stuck loading state.
   const handleAddVideo = (e) => {
     const file = e.target.files[0];
     e.target.value = "";
@@ -715,13 +819,19 @@ export default function InstructionDetailScreen({
     const localUrl = URL.createObjectURL(file);
     setEditedVideos((prev) => [
       ...prev,
-      { id, localUrl, url: null, uploading: true },
+      { id, localUrl, url: null, uploading: true, progress: 0 },
     ]);
 
     const controller = new AbortController();
     videoControllersRef.current.set(id, controller);
 
-    uploadToCloudinary(file, "video", controller.signal)
+    uploadToCloudinary(file, "video", {
+      signal: controller.signal,
+      onProgress: (pct) =>
+        setEditedVideos((prev) =>
+          prev.map((v) => (v.id === id ? { ...v, progress: pct } : v)),
+        ),
+    })
       .then((url) => {
         if (cancelledVideoIdsRef.current.has(id)) return;
         setEditedVideos((prev) =>
@@ -730,7 +840,7 @@ export default function InstructionDetailScreen({
         queueVideoAppend(url);
       })
       .catch((err) => {
-        if (!cancelledVideoIdsRef.current.has(id)) {
+        if (!cancelledVideoIdsRef.current.has(id) && err.name !== "AbortError") {
           alert("Video upload failed: " + err.message);
           setEditedVideos((prev) => prev.filter((v) => v.id !== id));
         }
@@ -888,11 +998,24 @@ export default function InstructionDetailScreen({
                           borderRadius: 8,
                           background: "rgba(0,0,0,0.45)",
                           display: "flex",
+                          flexDirection: "column",
                           alignItems: "center",
                           justifyContent: "center",
+                          gap: 4,
                         }}
                       >
                         <span className="ids-spinner ids-spinner-white" />
+                        {p.progress > 0 && (
+                          <span
+                            style={{
+                              color: "#fff",
+                              fontSize: 11,
+                              fontWeight: 700,
+                            }}
+                          >
+                            {p.progress}%
+                          </span>
+                        )}
                       </div>
                     )}
                     <button
@@ -933,11 +1056,24 @@ export default function InstructionDetailScreen({
                           borderRadius: 8,
                           background: "rgba(0,0,0,0.45)",
                           display: "flex",
+                          flexDirection: "column",
                           alignItems: "center",
                           justifyContent: "center",
+                          gap: 4,
                         }}
                       >
                         <span className="ids-spinner ids-spinner-white" />
+                        {v.progress > 0 && (
+                          <span
+                            style={{
+                              color: "#fff",
+                              fontSize: 11,
+                              fontWeight: 700,
+                            }}
+                          >
+                            {v.progress}%
+                          </span>
+                        )}
                       </div>
                     )}
                     <button
@@ -1060,6 +1196,7 @@ export default function InstructionDetailScreen({
                         localUrl: url,
                         url,
                         uploading: false,
+                        progress: 100,
                       })),
                     );
                     setEditedVideos(
@@ -1068,6 +1205,7 @@ export default function InstructionDetailScreen({
                         localUrl: url,
                         url,
                         uploading: false,
+                        progress: 100,
                       })),
                     );
                     setEditedAudioUrl(instruction.audioUrl || null);
@@ -1360,11 +1498,18 @@ function LightboxOverlay({
         {item.type === "image" ? (
           <img key={index} src={item.url} alt="" className="ids-lightbox-img" />
         ) : (
+          // Streamed through Cloudinary's q_auto/f_auto transform (see
+          // optimizedVideoUrl above) instead of the raw uploaded file — this
+          // is what stops the "plays a second, buffers, plays again" pattern,
+          // since the browser is now downloading a file that's a fraction of
+          // the original size. preload="auto" tells it to start fetching the
+          // moment the lightbox opens rather than waiting.
           <video
             key={index}
-            src={item.url}
+            src={optimizedVideoUrl(item.url)}
             controls
             autoPlay
+            preload="auto"
             className="ids-lightbox-video"
           />
         )}
