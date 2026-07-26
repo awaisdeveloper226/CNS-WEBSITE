@@ -16,6 +16,8 @@ import {
   Camera,
   Mic,
   Trash2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useAuthContext } from "../../context/AuthContext";
 import { API_ENDPOINTS } from "../../constants/network";
@@ -26,7 +28,7 @@ const CLOUDINARY_CLOUD_NAME = "dvmoaqsdb";
 const CLOUDINARY_UPLOAD_PRESET = "ml_default";
 const CLOUDINARY_API_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/upload`;
 
-async function uploadToCloudinary(file, resourceType) {
+async function uploadToCloudinary(file, resourceType, signal) {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
@@ -35,6 +37,7 @@ async function uploadToCloudinary(file, resourceType) {
     method: "POST",
     body: formData,
     headers: { Accept: "application/json" },
+    signal,
   });
   if (!res.ok) {
     const err = await res.json();
@@ -74,6 +77,90 @@ function SourceBadge({ isOwner }) {
     <span className="ids-badge ids-badge-owner">✓ Verified Business</span>
   ) : (
     <span className="ids-badge ids-badge-community">Community</span>
+  );
+}
+
+// ── Video Thumbnail (canvas-captured frame, rendered as a plain <img>) ────────
+// Using a live <video> element as a thumbnail causes Chrome/Edge to render
+// native video hover UI (including the Picture-in-Picture icon) regardless of
+// disablePictureInPicture/pointer-events — it's browser chrome, not a DOM
+// event. Instead we load the video off-screen just long enough to capture one
+// frame onto a canvas, then swap in a plain <img>. An <img> can never trigger
+// any native video affordances. Also works fine with local blob: URLs, so the
+// same component covers both saved videos and in-progress edit-mode uploads.
+function VideoThumbnail({
+  url,
+  iconSize = 28,
+  className = "ids-media-video-thumb",
+  style,
+}) {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [thumbUrl, setThumbUrl] = useState(null);
+
+  useEffect(() => {
+    setThumbUrl(null);
+  }, [url]);
+
+  const captureFrame = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    try {
+      canvas.width = video.videoWidth || 320;
+      canvas.height = video.videoHeight || 320;
+      canvas
+        .getContext("2d")
+        .drawImage(video, 0, 0, canvas.width, canvas.height);
+      setThumbUrl(canvas.toDataURL("image/jpeg", 0.82));
+    } catch {
+      // Cross-origin or decode failure — just keep the placeholder background.
+    }
+  };
+
+  return (
+    <div
+      className={className}
+      style={{ position: "relative", overflow: "hidden", ...style }}
+    >
+      {thumbUrl && (
+        <img
+          src={thumbUrl}
+          alt=""
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
+          }}
+        />
+      )}
+
+      {/* Off-screen video used only to grab a single frame — never visible/hoverable */}
+      <video
+        ref={videoRef}
+        src={url}
+        muted
+        playsInline
+        preload="metadata"
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          opacity: 0,
+          pointerEvents: "none",
+        }}
+        onLoadedMetadata={(e) => {
+          e.currentTarget.currentTime = 0.1;
+        }}
+        onSeeked={captureFrame}
+      />
+      <canvas ref={canvasRef} style={{ display: "none" }} />
+
+      <div className="ids-media-play-btn">
+        <VideoIcon size={iconSize} color="#fff" />
+      </div>
+    </div>
   );
 }
 
@@ -202,8 +289,17 @@ export default function InstructionDetailScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Media lightbox
-  const [lightbox, setLightbox] = useState(null); // { type: "image"|"video", url, index }
+  // Keeps the latest server-confirmed instruction available to async
+  // callbacks (background video sync) without them closing over stale state.
+  const instructionRef = useRef(null);
+  useEffect(() => {
+    instructionRef.current = instruction;
+  }, [instruction]);
+
+  // Media lightbox — index into the combined photos+videos array below, so
+  // switching between items never has to close/reopen the overlay.
+  const [lightboxIndex, setLightboxIndex] = useState(null);
+  const touchStartXRef = useRef(null);
 
   // Audio player
   const audioRef = useRef(null);
@@ -224,15 +320,38 @@ export default function InstructionDetailScreen({
   const [editedNotes, setEditedNotes] = useState("");
   const [editedType, setEditedType] = useState("");
   const [editedPhotos, setEditedPhotos] = useState([]);
+  // editedVideos items: { id, localUrl, url, uploading }
+  // localUrl is a blob: object URL for instant preview; url is the Cloudinary
+  // URL once the background upload finishes.
   const [editedVideos, setEditedVideos] = useState([]);
   const [editedAudioUrl, setEditedAudioUrl] = useState(null);
   const [editedAudioDuration, setEditedAudioDuration] = useState(null);
   const [editedMode, setEditedMode] = useState("write");
   const [savingEdit, setSavingEdit] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [backgroundUploadCount, setBackgroundUploadCount] = useState(0);
 
-  // ── Fetch instruction ─────────────────────────────────────────────────────
+  const editedVideosRef = useRef([]);
+  useEffect(() => {
+    editedVideosRef.current = editedVideos;
+  }, [editedVideos]);
+
+  const cancelledVideoIdsRef = useRef(new Set());
+  const videoControllersRef = useRef(new Map());
+  // Serializes background "attach this finished video to the saved
+  // instruction" calls so two finishing close together don't clobber
+  // each other's writes.
+  const videoSyncChainRef = useRef(Promise.resolve());
+
+  // Revoke any blob: object URLs still around when the screen unmounts.
+  useEffect(() => {
+    return () => {
+      editedVideosRef.current.forEach((v) => {
+        if (v.localUrl?.startsWith("blob:")) URL.revokeObjectURL(v.localUrl);
+      });
+    };
+  }, []);
+
   // ── Fetch instruction ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!instructionId) {
@@ -335,6 +454,50 @@ export default function InstructionDetailScreen({
     }
   };
 
+  // ── Background video sync ─────────────────────────────────────────────────
+  // Called the moment a video finishes uploading to Cloudinary, whether the
+  // edit form is still open or was already saved/closed. Attaches the video
+  // to whatever is currently persisted on the server, without requiring the
+  // user to hit Save again.
+  const queueVideoAppend = (url) => {
+    videoSyncChainRef.current = videoSyncChainRef.current
+      .then(async () => {
+        const current = instructionRef.current;
+        if (!current || !token) return;
+        const updatedVideos = [...(current.videos || []), url];
+        try {
+          const res = await fetch(
+            API_ENDPOINTS.CONTRIBUTION_UPDATE(instructionId),
+            {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                notes: current.notes || "",
+                type: current.type,
+                photos: current.photos || [],
+                videos: updatedVideos,
+                audioUrl: current.audioUrl || null,
+                audioDuration: current.audioDuration ?? null,
+              }),
+            },
+          );
+          const data = await res.json();
+          if (res.ok) {
+            setInstruction((prev) =>
+              prev ? { ...prev, videos: data.videos ?? updatedVideos } : prev,
+            );
+          }
+        } catch (_) {
+          // Best-effort — the video is safely uploaded on Cloudinary either
+          // way and will attach next time the user hits Save.
+        }
+      })
+      .catch(() => {});
+  };
+
   // ── Edit ──────────────────────────────────────────────────────────────────
   const handleSaveEdit = async () => {
     if (!token) return;
@@ -348,6 +511,13 @@ export default function InstructionDetailScreen({
     }
     setSavingEdit(true);
     try {
+      // Only videos that have actually finished uploading go in now — any
+      // still in progress keep uploading in the background and attach
+      // themselves via queueVideoAppend the moment they're done.
+      const completedVideoUrls = editedVideos
+        .filter((v) => v.url)
+        .map((v) => v.url);
+
       const res = await fetch(
         API_ENDPOINTS.CONTRIBUTION_UPDATE(instructionId),
         {
@@ -360,7 +530,7 @@ export default function InstructionDetailScreen({
             notes: editedMode === "write" ? editedNotes.trim() : "",
             type: editedType,
             photos: editedPhotos,
-            videos: editedVideos,
+            videos: completedVideoUrls,
             audioUrl: editedMode === "record" ? editedAudioUrl : null,
             audioDuration: editedMode === "record" ? editedAudioDuration : null,
           }),
@@ -413,19 +583,82 @@ export default function InstructionDetailScreen({
     }
   };
 
-  const handleAddVideo = async (e) => {
+  // Fire-and-forget: the video shows up instantly as a local preview and
+  // uploads in the background. The user can hit Save immediately — the URL
+  // attaches itself (via queueVideoAppend) the moment the upload finishes,
+  // whether or not the edit form is still open.
+  const handleAddVideo = (e) => {
     const file = e.target.files[0];
+    e.target.value = "";
     if (!file) return;
-    setUploadingVideo(true);
-    try {
-      const url = await uploadToCloudinary(file, "video");
-      setEditedVideos((prev) => [...prev, url]);
-    } catch (err) {
-      alert("Upload failed: " + err.message);
-    } finally {
-      setUploadingVideo(false);
-      e.target.value = "";
-    }
+
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const localUrl = URL.createObjectURL(file);
+    setEditedVideos((prev) => [
+      ...prev,
+      { id, localUrl, url: null, uploading: true },
+    ]);
+    setBackgroundUploadCount((c) => c + 1);
+
+    const controller = new AbortController();
+    videoControllersRef.current.set(id, controller);
+
+    uploadToCloudinary(file, "video", controller.signal)
+      .then((url) => {
+        if (cancelledVideoIdsRef.current.has(id)) return;
+        setEditedVideos((prev) =>
+          prev.map((v) => (v.id === id ? { ...v, url, uploading: false } : v)),
+        );
+        queueVideoAppend(url);
+      })
+      .catch((err) => {
+        if (!cancelledVideoIdsRef.current.has(id)) {
+          alert("Video upload failed: " + err.message);
+          setEditedVideos((prev) => prev.filter((v) => v.id !== id));
+        }
+      })
+      .finally(() => {
+        videoControllersRef.current.delete(id);
+        setBackgroundUploadCount((c) => Math.max(0, c - 1));
+      });
+  };
+
+  const handleRemoveVideo = (id) => {
+    cancelledVideoIdsRef.current.add(id);
+    const controller = videoControllersRef.current.get(id);
+    if (controller) controller.abort();
+
+    setEditedVideos((prev) => {
+      const item = prev.find((v) => v.id === id);
+      if (item?.localUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(item.localUrl);
+      }
+      return prev.filter((v) => v.id !== id);
+    });
+  };
+
+  // ── Lightbox navigation ───────────────────────────────────────────────────
+  const goPrev = useCallback(() => {
+    setLightboxIndex((i) =>
+      i === null ? i : (i - 1 + allMediaLenRef.current) % allMediaLenRef.current,
+    );
+  }, []);
+  const goNext = useCallback(() => {
+    setLightboxIndex((i) =>
+      i === null ? i : (i + 1) % allMediaLenRef.current,
+    );
+  }, []);
+
+  const handleTouchStart = (e) => {
+    touchStartXRef.current = e.touches[0].clientX;
+  };
+  const handleTouchEnd = (e) => {
+    if (touchStartXRef.current === null) return;
+    const deltaX = e.changedTouches[0].clientX - touchStartXRef.current;
+    touchStartXRef.current = null;
+    const SWIPE_THRESHOLD = 50;
+    if (deltaX > SWIPE_THRESHOLD) goPrev();
+    else if (deltaX < -SWIPE_THRESHOLD) goNext();
   };
 
   // ── Loading / error ───────────────────────────────────────────────────────
@@ -449,12 +682,41 @@ export default function InstructionDetailScreen({
   const allPhotos = instruction.photos ?? [];
   const allVideos = instruction.videos ?? [];
   const hasMedia = allPhotos.length > 0 || allVideos.length > 0;
+  const allMedia = [
+    ...allPhotos.map((url) => ({ type: "image", url })),
+    ...allVideos.map((url) => ({ type: "video", url })),
+  ];
   const hasAudio = !!instruction.audioUrl;
   const isOwner = !!instruction.isVerifiedBusinessInstruction;
   const canEdit = !!token;
 
   return (
     <div className="ids-root">
+      {backgroundUploadCount > 0 && (
+        <div
+          style={{
+            position: "fixed",
+            top: 12,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "#1f2937",
+            color: "#fff",
+            padding: "8px 14px",
+            borderRadius: 20,
+            fontSize: 13,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            zIndex: 200,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+          }}
+        >
+          <span className="ids-spinner ids-spinner-white" />
+          Uploading {backgroundUploadCount} video
+          {backgroundUploadCount > 1 ? "s" : ""} in background…
+        </div>
+      )}
+
       {/* ── Header ── */}
       <div className="ids-screen-header">
         <button className="ids-header-btn" onClick={onBack} aria-label="Back">
@@ -551,27 +813,38 @@ export default function InstructionDetailScreen({
               {/* Videos */}
               <p className="ids-edit-label">Videos</p>
               <div className="ids-media-row">
-                {editedVideos.map((_, i) => (
-                  <div key={i} className="ids-media-thumb">
-                    <div className="ids-video-thumb">
-                      <VideoIcon size={22} color="#fff" />
-                    </div>
+                {editedVideos.map((v) => (
+                  <div key={v.id} className="ids-media-thumb">
+                    <VideoThumbnail
+                      url={v.url || v.localUrl}
+                      iconSize={18}
+                      style={{ width: "100%", height: "100%" }}
+                    />
+                    {v.uploading && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          borderRadius: 8,
+                          background: "rgba(0,0,0,0.45)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <span className="ids-spinner ids-spinner-white" />
+                      </div>
+                    )}
                     <button
                       className="ids-media-remove"
-                      onClick={() =>
-                        setEditedVideos((p) => p.filter((_, j) => j !== i))
-                      }
+                      onClick={() => handleRemoveVideo(v.id)}
                     >
                       <X size={10} color="#fff" />
                     </button>
                   </div>
                 ))}
                 <label className="ids-media-add">
-                  {uploadingVideo ? (
-                    <span className="ids-spinner" />
-                  ) : (
-                    <VideoIcon size={22} color="#9ca3af" />
-                  )}
+                  <VideoIcon size={22} color="#9ca3af" />
                   <input
                     type="file"
                     accept="video/*"
@@ -651,7 +924,7 @@ export default function InstructionDetailScreen({
                 <button
                   className="ids-save-btn"
                   onClick={handleSaveEdit}
-                  disabled={savingEdit || uploadingPhoto || uploadingVideo}
+                  disabled={savingEdit || uploadingPhoto}
                 >
                   {savingEdit ? (
                     <span className="ids-spinner ids-spinner-white" />
@@ -677,7 +950,14 @@ export default function InstructionDetailScreen({
                       instruction.type || "Courier/Parcel Delivery",
                     );
                     setEditedPhotos(instruction.photos ?? []);
-                    setEditedVideos(instruction.videos ?? []);
+                    setEditedVideos(
+                      (instruction.videos ?? []).map((url) => ({
+                        id: url,
+                        localUrl: url,
+                        url,
+                        uploading: false,
+                      })),
+                    );
                     setEditedAudioUrl(instruction.audioUrl || null);
                     setEditedAudioDuration(instruction.audioDuration ?? null);
                     setEditedMode(instruction.audioUrl ? "record" : "write");
@@ -698,9 +978,7 @@ export default function InstructionDetailScreen({
                       <button
                         key={`p-${i}`}
                         className="ids-media-item"
-                        onClick={() =>
-                          setLightbox({ type: "image", url, index: i })
-                        }
+                        onClick={() => setLightboxIndex(i)}
                       >
                         <img src={url} alt="" className="ids-media-img" />
                       </button>
@@ -709,13 +987,11 @@ export default function InstructionDetailScreen({
                       <button
                         key={`v-${i}`}
                         className="ids-media-item"
-                        onClick={() => setLightbox({ type: "video", url })}
+                        onClick={() =>
+                          setLightboxIndex(allPhotos.length + i)
+                        }
                       >
-                        <div className="ids-media-video-thumb">
-                          <div className="ids-media-play-btn">
-                            <VideoIcon size={28} color="#fff" />
-                          </div>
-                        </div>
+                        <VideoThumbnail url={url} />
                       </button>
                     ))}
                   </div>
@@ -882,41 +1158,130 @@ export default function InstructionDetailScreen({
       </div>
 
       {/* ── Lightbox ── */}
-      {lightbox && (
-        <div className="ids-lightbox" onClick={() => setLightbox(null)}>
-          <div
-            className="ids-lightbox-header"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="ids-lightbox-title">
-              {lightbox.type === "image"
-                ? `Photo ${(lightbox.index ?? 0) + 1} of ${allPhotos.length}`
-                : "Video"}
-            </span>
-            <button
-              className="ids-lightbox-close"
-              onClick={() => setLightbox(null)}
-            >
-              <X size={28} color="#fff" />
-            </button>
-          </div>
-          <div
-            className="ids-lightbox-body"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {lightbox.type === "image" ? (
-              <img src={lightbox.url} alt="" className="ids-lightbox-img" />
-            ) : (
-              <video
-                src={lightbox.url}
-                controls
-                autoPlay
-                className="ids-lightbox-video"
-              />
-            )}
-          </div>
-        </div>
+      {lightboxIndex !== null && allMedia[lightboxIndex] && (
+        <LightboxOverlay
+          allMedia={allMedia}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onPrev={goPrev}
+          onNext={goNext}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        />
       )}
+    </div>
+  );
+}
+
+// Keeps the always-fresh media count available to goPrev/goNext without
+// forcing them to be redefined every render (they're wired to a keydown
+// listener whose effect only needs to resubscribe when the lightbox opens or
+// closes, not on every render).
+const allMediaLenRef = { current: 0 };
+
+// ── Lightbox overlay (separate component so its keydown effect is scoped) ────
+function LightboxOverlay({
+  allMedia,
+  index,
+  onClose,
+  onPrev,
+  onNext,
+  onTouchStart,
+  onTouchEnd,
+}) {
+  allMediaLenRef.current = allMedia.length;
+
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.key === "ArrowRight") onNext();
+      else if (e.key === "ArrowLeft") onPrev();
+      else if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onNext, onPrev, onClose]);
+
+  const item = allMedia[index];
+
+  return (
+    <div className="ids-lightbox" onClick={onClose}>
+      <div className="ids-lightbox-header" onClick={(e) => e.stopPropagation()}>
+        <span className="ids-lightbox-title">
+          {index + 1} of {allMedia.length}
+        </span>
+        <button className="ids-lightbox-close" onClick={onClose}>
+          <X size={28} color="#fff" />
+        </button>
+      </div>
+      <div
+        className="ids-lightbox-body"
+        onClick={(e) => e.stopPropagation()}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        style={{ position: "relative" }}
+      >
+        {allMedia.length > 1 && (
+          <button
+            onClick={onPrev}
+            aria-label="Previous"
+            style={{
+              position: "absolute",
+              left: 12,
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "rgba(0,0,0,0.5)",
+              border: "none",
+              borderRadius: "50%",
+              width: 44,
+              height: 44,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              zIndex: 10,
+            }}
+          >
+            <ChevronLeft size={28} color="#fff" />
+          </button>
+        )}
+
+        {item.type === "image" ? (
+          <img key={index} src={item.url} alt="" className="ids-lightbox-img" />
+        ) : (
+          <video
+            key={index}
+            src={item.url}
+            controls
+            autoPlay
+            className="ids-lightbox-video"
+          />
+        )}
+
+        {allMedia.length > 1 && (
+          <button
+            onClick={onNext}
+            aria-label="Next"
+            style={{
+              position: "absolute",
+              right: 12,
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "rgba(0,0,0,0.5)",
+              border: "none",
+              borderRadius: "50%",
+              width: 44,
+              height: 44,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              zIndex: 10,
+            }}
+          >
+            <ChevronRight size={28} color="#fff" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

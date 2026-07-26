@@ -1,7 +1,7 @@
 // src/hooks/useAuth.js
 import { useState, useEffect } from "react";
 import { API_ENDPOINTS, AUTH_TOKEN_KEY } from "../constants/network";
-import { getDeviceInfo } from "../utils/deviceId";
+import { getDeviceInfo, getDeviceId } from "../utils/deviceId";
 
 const useAuth = () => {
   const [authState, setAuthState] = useState({
@@ -126,7 +126,25 @@ const useAuth = () => {
   };
 
   // ── Logout ────────────────────────────────────────────────────────────────
-  const logout = () => {
+  // Tells the backend to mark this device's session as logged out (so
+  // activeDevices stays accurate), then clears local state regardless of
+  // whether that call succeeds.
+  const logout = async () => {
+    try {
+      if (authState.token) {
+        const res = await fetch(API_ENDPOINTS.AUTH_LOGOUT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authState.token}`,
+          },
+          body: JSON.stringify({ deviceId: getDeviceId() }),
+        });
+        await res.text().catch(() => {});
+      }
+    } catch (_) {
+      // best-effort — don't block local logout on a network failure
+    }
     localStorage.removeItem(AUTH_TOKEN_KEY);
     setAuthState({
       user: null, token: null, isLoading: false,
