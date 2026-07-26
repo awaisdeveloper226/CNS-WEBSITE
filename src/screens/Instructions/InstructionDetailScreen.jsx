@@ -273,9 +273,13 @@ function VideoThumbnail({
   );
 }
 
-// ── Web Voice Recorder (replaces WhatsApp PanResponder version) ───────────────
+// ── Web Voice Recorder ───────────────────────────────────────────────────────
+// Records audio and hands the raw File up to the parent via onAudioReady —
+// it does NOT upload anything itself. Just like photos/videos, the audio is
+// only staged locally; the parent uploads it to Cloudinary inside
+// handleSaveEdit, only once Save is actually pressed.
 function VoiceRecorder({ onAudioReady, disabled }) {
-  const [state, setState] = useState("idle"); // idle | recording | uploading
+  const [state, setState] = useState("idle"); // idle | recording
   const [duration, setDuration] = useState(0);
   const mediaRecRef = useRef(null);
   const timerRef = useRef(null);
@@ -291,19 +295,14 @@ function VoiceRecorder({ onAudioReady, disabled }) {
       mr.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
-      mr.onstop = async () => {
+      mr.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         const file = new File([blob], `voice_${Date.now()}.webm`, {
           type: "audio/webm",
         });
-        setState("uploading");
-        try {
-          const url = await uploadToCloudinary(file, "video"); // Cloudinary treats audio as video resource
-          onAudioReady(url, durationRef.current);
-        } catch (err) {
-          alert("Upload failed: " + err.message);
-        }
+        // Staged locally only — no network call here.
+        onAudioReady(file, durationRef.current);
         setState("idle");
         durationRef.current = 0;
         setDuration(0);
@@ -342,14 +341,6 @@ function VoiceRecorder({ onAudioReady, disabled }) {
     durationRef.current = 0;
     setDuration(0);
   };
-
-  if (state === "uploading")
-    return (
-      <div className="ids-voice-uploading">
-        <span className="ids-spinner" />
-        <span>Processing voice note…</span>
-      </div>
-    );
 
   if (state === "recording")
     return (
@@ -394,6 +385,11 @@ function VoiceRecorder({ onAudioReady, disabled }) {
 // it running inside our own overlay, so the shutter button can be tapped as
 // many times as needed — with a running thumbnail strip and counter, just
 // like a native multi-shot camera screen — until the user taps "Done".
+//
+// NOTE: capturing a shot here only stages it locally (via onCapture, which
+// hands the raw File up to the parent). Nothing is uploaded to Cloudinary at
+// this point — upload only happens later, when the parent's Save button is
+// pressed. See addPhotoFile / handleSaveEdit in the main component.
 function CustomCameraModal({ visible, onClose, onCapture }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -478,7 +474,7 @@ function CustomCameraModal({ visible, onClose, onCapture }) {
           ...prev,
           { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, previewUrl },
         ]);
-        onCapture(file); // parent adds it to the form + uploads in background, camera stays open
+        onCapture(file); // parent stages it locally — no upload happens yet
       },
       "image/jpeg",
       0.85,
@@ -729,20 +725,12 @@ export default function InstructionDetailScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Keeps the latest server-confirmed instruction available to async
-  // callbacks (background photo/video sync) without them closing over stale
-  // state.
-  const instructionRef = useRef(null);
-  useEffect(() => {
-    instructionRef.current = instruction;
-  }, [instruction]);
-
   // Media lightbox — index into the combined photos+videos array below, so
   // switching between items never has to close/reopen the overlay.
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const touchStartXRef = useRef(null);
 
-  // Audio player
+  // Audio player (view mode — plays the already-saved instruction.audioUrl)
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioPos, setAudioPos] = useState(0);
@@ -760,15 +748,35 @@ export default function InstructionDetailScreen({
   const [isEditing, setIsEditing] = useState(false);
   const [editedNotes, setEditedNotes] = useState("");
   const [editedType, setEditedType] = useState("");
-  // editedPhotos items: { id, localUrl, url, uploading, progress }
-  // localUrl is a blob: object URL for instant preview; url is the Cloudinary
-  // URL once the background upload finishes; progress is 0-100. Mirrors
-  // editedVideos below.
+  // editedPhotos items:
+  //   { id, localUrl, file, url, uploading, progress }
+  // - localUrl: blob: preview URL (new picks) or the real Cloudinary URL
+  //   (existing photos loaded from the saved instruction) — always used for
+  //   the <img> preview.
+  // - file: the raw File object for a newly picked/captured photo that
+  //   hasn't been uploaded yet. null for photos that already existed on the
+  //   saved instruction.
+  // - url: the Cloudinary URL, set only once the photo has actually been
+  //   uploaded (which now only happens inside handleSaveEdit, on Save).
+  // Mirrors editedVideos below. Nothing with `file` set and no `url` is ever
+  // sent to Cloudinary until Save is pressed.
   const [editedPhotos, setEditedPhotos] = useState([]);
-  // editedVideos items: { id, localUrl, url, uploading, progress }
   const [editedVideos, setEditedVideos] = useState([]);
+
+  // Audio, staged the same way as photos/videos:
+  // - editedAudioUrl: the Cloudinary URL, set for audio that already existed
+  //   on the saved instruction, or after a freshly-recorded clip has been
+  //   uploaded (on Save).
+  // - editedAudioFile: the raw recorded File, set the moment recording
+  //   finishes, cleared once it's been uploaded. Nothing is uploaded until
+  //   Save is pressed.
+  // - editedAudioLocalUrl: blob: preview URL for a freshly-recorded (not yet
+  //   uploaded) clip.
   const [editedAudioUrl, setEditedAudioUrl] = useState(null);
+  const [editedAudioFile, setEditedAudioFile] = useState(null);
+  const [editedAudioLocalUrl, setEditedAudioLocalUrl] = useState(null);
   const [editedAudioDuration, setEditedAudioDuration] = useState(null);
+
   const [editedMode, setEditedMode] = useState("write");
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -785,30 +793,33 @@ export default function InstructionDetailScreen({
     editedVideosRef.current = editedVideos;
   }, [editedVideos]);
 
-  const cancelledPhotoIdsRef = useRef(new Set());
-  const photoControllersRef = useRef(new Map());
-  // Serializes background "attach this finished photo to the saved
-  // instruction" calls so two finishing close together don't clobber
-  // each other's writes.
-  const photoSyncChainRef = useRef(Promise.resolve());
+  const editedAudioLocalUrlRef = useRef(null);
+  useEffect(() => {
+    editedAudioLocalUrlRef.current = editedAudioLocalUrl;
+  }, [editedAudioLocalUrl]);
 
-  const cancelledVideoIdsRef = useRef(new Set());
-  const videoControllersRef = useRef(new Map());
-  // Serializes background "attach this finished video to the saved
-  // instruction" calls so two finishing close together don't clobber
-  // each other's writes.
-  const videoSyncChainRef = useRef(Promise.resolve());
+  // Revokes any blob: preview URLs currently staged in the edit form (photos,
+  // videos, and audio). Called whenever those local previews are no longer
+  // needed — on Cancel (nothing was ever uploaded, so we just drop the local
+  // files), after a successful Save (the real Cloudinary URLs take over),
+  // and on unmount.
+  const revokeStagedPreviews = () => {
+    editedPhotosRef.current.forEach((p) => {
+      if (p.localUrl?.startsWith("blob:")) URL.revokeObjectURL(p.localUrl);
+    });
+    editedVideosRef.current.forEach((v) => {
+      if (v.localUrl?.startsWith("blob:")) URL.revokeObjectURL(v.localUrl);
+    });
+    if (editedAudioLocalUrlRef.current) {
+      URL.revokeObjectURL(editedAudioLocalUrlRef.current);
+    }
+  };
 
-  // Revoke any blob: object URLs still around when the screen unmounts.
   useEffect(() => {
     return () => {
-      editedPhotosRef.current.forEach((p) => {
-        if (p.localUrl?.startsWith("blob:")) URL.revokeObjectURL(p.localUrl);
-      });
-      editedVideosRef.current.forEach((v) => {
-        if (v.localUrl?.startsWith("blob:")) URL.revokeObjectURL(v.localUrl);
-      });
+      revokeStagedPreviews();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Fetch instruction ─────────────────────────────────────────────────────
@@ -853,7 +864,7 @@ export default function InstructionDetailScreen({
       });
   }, [instructionId]);
 
-  // ── Audio player ──────────────────────────────────────────────────────────
+  // ── Audio player (view mode) ────────────────────────────────────────────────
   const handleTimeUpdate = useCallback(() => {
     if (!audioRef.current) return;
     setAudioPos(audioRef.current.currentTime);
@@ -913,117 +924,188 @@ export default function InstructionDetailScreen({
     }
   };
 
-  // ── Background photo sync ─────────────────────────────────────────────────
-  // Called the moment a photo finishes uploading to Cloudinary, whether the
-  // edit form is still open or was already saved/closed. Attaches the photo
-  // to whatever is currently persisted on the server, without requiring the
-  // user to hit Save again. Mirrors queueVideoAppend below.
-  const queuePhotoAppend = (url) => {
-    photoSyncChainRef.current = photoSyncChainRef.current
-      .then(async () => {
-        const current = instructionRef.current;
-        if (!current || !token) return;
-        const updatedPhotos = [...(current.photos || []), url];
-        try {
-          const res = await fetch(
-            API_ENDPOINTS.CONTRIBUTION_UPDATE(instructionId),
-            {
-              method: "PUT",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                notes: current.notes || "",
-                type: current.type,
-                photos: updatedPhotos,
-                videos: current.videos || [],
-                audioUrl: current.audioUrl || null,
-                audioDuration: current.audioDuration ?? null,
-              }),
-            },
-          );
-          const data = await res.json();
-          if (res.ok) {
-            setInstruction((prev) =>
-              prev ? { ...prev, photos: data.photos ?? updatedPhotos } : prev,
-            );
-          }
-        } catch (_) {
-          // Best-effort — the photo is safely uploaded on Cloudinary either
-          // way and will attach next time the user hits Save.
-        }
-      })
-      .catch(() => {});
+  // ── Staging new photos/videos/audio (NO upload happens here) ────────────────
+  // Adds an instant local-preview placeholder for a newly picked/captured
+  // photo. The raw File is kept on the item and is only ever uploaded inside
+  // handleSaveEdit, once Save is actually pressed. Cancelling the edit form
+  // or simply navigating away means this file is never sent anywhere.
+  const addPhotoFile = (file) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const localUrl = URL.createObjectURL(file);
+    setEditedPhotos((prev) => [
+      ...prev,
+      { id, localUrl, file, url: null, uploading: false, progress: 0 },
+    ]);
   };
 
-  // ── Background video sync ─────────────────────────────────────────────────
-  // Called the moment a video finishes uploading to Cloudinary, whether the
-  // edit form is still open or was already saved/closed. Attaches the video
-  // to whatever is currently persisted on the server, without requiring the
-  // user to hit Save again.
-  const queueVideoAppend = (url) => {
-    videoSyncChainRef.current = videoSyncChainRef.current
-      .then(async () => {
-        const current = instructionRef.current;
-        if (!current || !token) return;
-        const updatedVideos = [...(current.videos || []), url];
-        try {
-          const res = await fetch(
-            API_ENDPOINTS.CONTRIBUTION_UPDATE(instructionId),
-            {
-              method: "PUT",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                notes: current.notes || "",
-                type: current.type,
-                photos: current.photos || [],
-                videos: updatedVideos,
-                audioUrl: current.audioUrl || null,
-                audioDuration: current.audioDuration ?? null,
-              }),
-            },
-          );
-          const data = await res.json();
-          if (res.ok) {
-            setInstruction((prev) =>
-              prev ? { ...prev, videos: data.videos ?? updatedVideos } : prev,
-            );
-          }
-        } catch (_) {
-          // Best-effort — the video is safely uploaded on Cloudinary either
-          // way and will attach next time the user hits Save.
-        }
-      })
-      .catch(() => {});
+  // Same idea for video — see addPhotoFile above.
+  const addVideoFile = (file) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const localUrl = URL.createObjectURL(file);
+    setEditedVideos((prev) => [
+      ...prev,
+      { id, localUrl, file, url: null, uploading: false, progress: 0 },
+    ]);
   };
 
-  // ── Edit ──────────────────────────────────────────────────────────────────
+  // Called the moment a recording finishes. Only stages the file + a local
+  // preview — no upload until Save. If an older staged (not-yet-uploaded)
+  // recording exists, its blob URL is revoked first.
+  const addAudioFile = (file, dur) => {
+    if (editedAudioLocalUrl) URL.revokeObjectURL(editedAudioLocalUrl);
+    const localUrl = URL.createObjectURL(file);
+    setEditedAudioFile(file);
+    setEditedAudioLocalUrl(localUrl);
+    setEditedAudioUrl(null); // supersedes any previously-saved audio URL
+    setEditedAudioDuration(dur);
+  };
+
+  // Photos picked from the regular file input (device gallery / file browser).
+  const handleAddPhoto = (e) => {
+    const files = Array.from(e.target.files);
+    e.target.value = "";
+    if (!files.length) return;
+    files.forEach(addPhotoFile);
+  };
+
+  // Called once per shutter-press from the in-app multi-shot camera. The
+  // camera modal itself stays open across captures — see CustomCameraModal.
+  // Only stages the file locally; still no upload until Save.
+  const handleCameraCapture = (file) => {
+    addPhotoFile(file);
+  };
+
+  const handleRemovePhoto = (id) => {
+    setEditedPhotos((prev) => {
+      const item = prev.find((p) => p.id === id);
+      if (item?.localUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(item.localUrl);
+      }
+      return prev.filter((p) => p.id !== id);
+    });
+  };
+
+  const handleAddVideo = (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    addVideoFile(file);
+  };
+
+  const handleRemoveVideo = (id) => {
+    setEditedVideos((prev) => {
+      const item = prev.find((v) => v.id === id);
+      if (item?.localUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(item.localUrl);
+      }
+      return prev.filter((v) => v.id !== id);
+    });
+  };
+
+  const handleRemoveAudio = () => {
+    if (editedAudioLocalUrl) URL.revokeObjectURL(editedAudioLocalUrl);
+    setEditedAudioFile(null);
+    setEditedAudioLocalUrl(null);
+    setEditedAudioUrl(null);
+    setEditedAudioDuration(null);
+  };
+
+  // ── Save (this is the ONLY place anything gets uploaded to Cloudinary) ────
   const handleSaveEdit = async () => {
     if (!token) return;
     if (editedMode === "write" && !editedNotes.trim()) {
       alert("Please provide written instructions.");
       return;
     }
-    if (editedMode === "record" && !editedAudioUrl) {
+    if (editedMode === "record" && !editedAudioUrl && !editedAudioFile) {
       alert("Please record an audio instruction.");
       return;
     }
+
     setSavingEdit(true);
     try {
-      // Only photos/videos that have actually finished uploading go in now —
-      // any still in progress keep uploading in the background and attach
-      // themselves via queuePhotoAppend / queueVideoAppend the moment
-      // they're done.
-      const completedPhotoUrls = editedPhotos
-        .filter((p) => p.url)
-        .map((p) => p.url);
-      const completedVideoUrls = editedVideos
-        .filter((v) => v.url)
-        .map((v) => v.url);
+      // Anything with a staged `file` and no `url` yet hasn't been uploaded —
+      // that's everything picked/captured/recorded since opening the edit
+      // form. Existing photos/videos/audio already have `url` set and are
+      // left alone (not re-uploaded).
+      const photosToUpload = editedPhotos.filter((p) => p.file && !p.url);
+      const videosToUpload = editedVideos.filter((v) => v.file && !v.url);
+      const audioNeedsUpload =
+        editedMode === "record" && !!editedAudioFile && !editedAudioUrl;
+
+      if (photosToUpload.length) {
+        const uploadingIds = new Set(photosToUpload.map((p) => p.id));
+        setEditedPhotos((prev) =>
+          prev.map((p) =>
+            uploadingIds.has(p.id) ? { ...p, uploading: true, progress: 0 } : p,
+          ),
+        );
+      }
+      if (videosToUpload.length) {
+        const uploadingIds = new Set(videosToUpload.map((v) => v.id));
+        setEditedVideos((prev) =>
+          prev.map((v) =>
+            uploadingIds.has(v.id) ? { ...v, uploading: true, progress: 0 } : v,
+          ),
+        );
+      }
+
+      // Upload every staged photo, tracking each one's real Cloudinary URL
+      // locally (not just in state) so we can build the final request body
+      // without racing React's async state updates.
+      const uploadedPhotos = await Promise.all(
+        photosToUpload.map(async (p) => {
+          const toUpload = await compressImage(p.file);
+          const url = await uploadToCloudinary(toUpload, "image", {
+            onProgress: (pct) =>
+              setEditedPhotos((prev) =>
+                prev.map((x) => (x.id === p.id ? { ...x, progress: pct } : x)),
+              ),
+          });
+          setEditedPhotos((prev) =>
+            prev.map((x) =>
+              x.id === p.id ? { ...x, url, uploading: false } : x,
+            ),
+          );
+          return { id: p.id, url };
+        }),
+      );
+
+      const uploadedVideos = await Promise.all(
+        videosToUpload.map(async (v) => {
+          const url = await uploadToCloudinary(v.file, "video", {
+            onProgress: (pct) =>
+              setEditedVideos((prev) =>
+                prev.map((x) => (x.id === v.id ? { ...x, progress: pct } : x)),
+              ),
+          });
+          setEditedVideos((prev) =>
+            prev.map((x) =>
+              x.id === v.id ? { ...x, url, uploading: false } : x,
+            ),
+          );
+          return { id: v.id, url };
+        }),
+      );
+
+      // Audio: only upload if there's a freshly-recorded clip staged.
+      let finalAudioUrl = editedAudioUrl;
+      if (audioNeedsUpload) {
+        finalAudioUrl = await uploadToCloudinary(editedAudioFile, "video"); // Cloudinary treats audio as video resource
+        setEditedAudioUrl(finalAudioUrl);
+      }
+
+      const photoUrlById = new Map(uploadedPhotos.map((x) => [x.id, x.url]));
+      const videoUrlById = new Map(uploadedVideos.map((x) => [x.id, x.url]));
+
+      // Final lists: existing photos/videos keep their url; newly staged
+      // ones use the url we just got back from Cloudinary.
+      const finalPhotoUrls = editedPhotos.map(
+        (p) => p.url || photoUrlById.get(p.id),
+      );
+      const finalVideoUrls = editedVideos.map(
+        (v) => v.url || videoUrlById.get(v.id),
+      );
 
       const res = await fetch(
         API_ENDPOINTS.CONTRIBUTION_UPDATE(instructionId),
@@ -1036,15 +1118,16 @@ export default function InstructionDetailScreen({
           body: JSON.stringify({
             notes: editedMode === "write" ? editedNotes.trim() : "",
             type: editedType,
-            photos: completedPhotoUrls,
-            videos: completedVideoUrls,
-            audioUrl: editedMode === "record" ? editedAudioUrl : null,
+            photos: finalPhotoUrls,
+            videos: finalVideoUrls,
+            audioUrl: editedMode === "record" ? finalAudioUrl : null,
             audioDuration: editedMode === "record" ? editedAudioDuration : null,
           }),
         },
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to update.");
+
       setInstruction((prev) =>
         prev
           ? {
@@ -1065,147 +1148,27 @@ export default function InstructionDetailScreen({
       setIsPlaying(false);
       setAudioPos(0);
       setAudioDur(0);
+      revokeStagedPreviews(); // real URLs now live on `instruction`; drop local blobs
+      setEditedAudioFile(null);
+      setEditedAudioLocalUrl(null);
       setIsEditing(false);
     } catch (err) {
       alert(err.message);
+      // Reset any "uploading" flags so the user can see what's staged and retry.
+      setEditedPhotos((prev) => prev.map((p) => ({ ...p, uploading: false })));
+      setEditedVideos((prev) => prev.map((v) => ({ ...v, uploading: false })));
     } finally {
       setSavingEdit(false);
     }
   };
 
-  // Shared upload pipeline for a single photo File, regardless of whether it
-  // came from the file picker (gallery) or the in-app multi-shot camera
-  // (CustomCameraModal). Adds an instant local-preview placeholder, then
-  // compresses + uploads in the background — the user can hit Save
-  // immediately, and queuePhotoAppend attaches it the moment it finishes,
-  // whether or not the edit form is still open. Mirrors addVideoFile below.
-  const addPhotoFile = (file) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const localUrl = URL.createObjectURL(file);
-    setEditedPhotos((prev) => [
-      ...prev,
-      { id, localUrl, url: null, uploading: true, progress: 0 },
-    ]);
-
-    const controller = new AbortController();
-    photoControllersRef.current.set(id, controller);
-
-    (async () => {
-      try {
-        const toUpload = await compressImage(file);
-        if (cancelledPhotoIdsRef.current.has(id)) return;
-
-        const url = await uploadToCloudinary(toUpload, "image", {
-          signal: controller.signal,
-          onProgress: (pct) =>
-            setEditedPhotos((prev) =>
-              prev.map((p) => (p.id === id ? { ...p, progress: pct } : p)),
-            ),
-        });
-        if (cancelledPhotoIdsRef.current.has(id)) return;
-        setEditedPhotos((prev) =>
-          prev.map((p) => (p.id === id ? { ...p, url, uploading: false } : p)),
-        );
-        queuePhotoAppend(url);
-      } catch (err) {
-        if (!cancelledPhotoIdsRef.current.has(id) && err.name !== "AbortError") {
-          alert("Photo upload failed: " + err.message);
-          setEditedPhotos((prev) => prev.filter((p) => p.id !== id));
-        }
-      } finally {
-        photoControllersRef.current.delete(id);
-      }
-    })();
-  };
-
-  // Fire-and-forget, one placeholder per file, for photos picked from the
-  // regular file input (device gallery / file browser). See addPhotoFile
-  // above for the shared upload pipeline.
-  const handleAddPhoto = (e) => {
-    const files = Array.from(e.target.files);
-    e.target.value = "";
-    if (!files.length) return;
-    files.forEach(addPhotoFile);
-  };
-
-  // Called once per shutter-press from the in-app multi-shot camera. The
-  // camera modal itself stays open across captures — see CustomCameraModal.
-  const handleCameraCapture = (file) => {
-    addPhotoFile(file);
-  };
-
-  const handleRemovePhoto = (id) => {
-    cancelledPhotoIdsRef.current.add(id);
-    const controller = photoControllersRef.current.get(id);
-    if (controller) controller.abort();
-
-    setEditedPhotos((prev) => {
-      const item = prev.find((p) => p.id === id);
-      if (item?.localUrl?.startsWith("blob:")) {
-        URL.revokeObjectURL(item.localUrl);
-      }
-      return prev.filter((p) => p.id !== id);
-    });
-  };
-
-  // Fire-and-forget: the video shows up instantly as a local preview and
-  // uploads in the background. The user can hit Save immediately — the URL
-  // attaches itself (via queueVideoAppend) the moment the upload finishes,
-  // whether or not the edit form is still open. A live progress percentage
-  // is tracked alongside the spinner so it's clear real progress is
-  // happening, not just a stuck loading state.
-  const handleAddVideo = (e) => {
-    const file = e.target.files[0];
-    e.target.value = "";
-    if (!file) return;
-
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const localUrl = URL.createObjectURL(file);
-    setEditedVideos((prev) => [
-      ...prev,
-      { id, localUrl, url: null, uploading: true, progress: 0 },
-    ]);
-
-    const controller = new AbortController();
-    videoControllersRef.current.set(id, controller);
-
-    uploadToCloudinary(file, "video", {
-      signal: controller.signal,
-      onProgress: (pct) =>
-        setEditedVideos((prev) =>
-          prev.map((v) => (v.id === id ? { ...v, progress: pct } : v)),
-        ),
-    })
-      .then((url) => {
-        if (cancelledVideoIdsRef.current.has(id)) return;
-        setEditedVideos((prev) =>
-          prev.map((v) => (v.id === id ? { ...v, url, uploading: false } : v)),
-        );
-        queueVideoAppend(url);
-      })
-      .catch((err) => {
-        if (!cancelledVideoIdsRef.current.has(id) && err.name !== "AbortError") {
-          alert("Video upload failed: " + err.message);
-          setEditedVideos((prev) => prev.filter((v) => v.id !== id));
-        }
-      })
-      .finally(() => {
-        videoControllersRef.current.delete(id);
-      });
-  };
-
-  const handleRemoveVideo = (id) => {
-    cancelledVideoIdsRef.current.add(id);
-    const controller = videoControllersRef.current.get(id);
-    if (controller) controller.abort();
-
-    setEditedVideos((prev) => {
-      const item = prev.find((v) => v.id === id);
-      if (item?.localUrl?.startsWith("blob:")) {
-        URL.revokeObjectURL(item.localUrl);
-      }
-      return prev.filter((v) => v.id !== id);
-    });
+  const handleCancelEdit = () => {
+    // Nothing staged here was ever uploaded — just drop the local previews
+    // and close the form.
+    revokeStagedPreviews();
+    setEditedAudioFile(null);
+    setEditedAudioLocalUrl(null);
+    setIsEditing(false);
   };
 
   // ── Lightbox navigation ───────────────────────────────────────────────────
@@ -1365,6 +1328,7 @@ export default function InstructionDetailScreen({
                     <button
                       className="ids-media-remove"
                       onClick={() => handleRemovePhoto(p.id)}
+                      disabled={savingEdit}
                     >
                       <X size={10} color="#fff" />
                     </button>
@@ -1372,12 +1336,14 @@ export default function InstructionDetailScreen({
                 ))}
 
                 {/* Camera: opens the in-app multi-shot camera session
-                    (stays open across captures — see CustomCameraModal). */}
+                    (stays open across captures — see CustomCameraModal).
+                    Captured shots are only staged locally, not uploaded. */}
                 <button
                   type="button"
                   className="ids-media-add"
                   onClick={() => setCameraModalVisible(true)}
                   aria-label="Take photos with camera"
+                  disabled={savingEdit}
                 >
                   <Camera size={22} color="#9ca3af" />
                 </button>
@@ -1391,6 +1357,7 @@ export default function InstructionDetailScreen({
                     multiple
                     style={{ display: "none" }}
                     onChange={handleAddPhoto}
+                    disabled={savingEdit}
                   />
                 </label>
               </div>
@@ -1436,6 +1403,7 @@ export default function InstructionDetailScreen({
                     <button
                       className="ids-media-remove"
                       onClick={() => handleRemoveVideo(v.id)}
+                      disabled={savingEdit}
                     >
                       <X size={10} color="#fff" />
                     </button>
@@ -1448,6 +1416,7 @@ export default function InstructionDetailScreen({
                     accept="video/*"
                     style={{ display: "none" }}
                     onChange={handleAddVideo}
+                    disabled={savingEdit}
                   />
                 </label>
               </div>
@@ -1481,29 +1450,31 @@ export default function InstructionDetailScreen({
                 />
               ) : (
                 <div className="ids-audio-section">
-                  {editedAudioUrl ? (
+                  {editedAudioUrl || editedAudioFile ? (
                     <div className="ids-audio-edit-row">
                       <span className="ids-audio-edit-label">
                         🎵{" "}
                         {editedAudioDuration
-                          ? `Audio (${editedAudioDuration}s)`
+                          ? `Audio (${editedAudioDuration}s)${
+                              editedAudioFile && !editedAudioUrl
+                                ? " — not saved yet"
+                                : ""
+                            }`
                           : "Audio Instruction"}
                       </span>
                       <button
                         className="ids-audio-remove"
-                        onClick={() => {
-                          setEditedAudioUrl(null);
-                          setEditedAudioDuration(null);
-                        }}
+                        onClick={handleRemoveAudio}
+                        disabled={savingEdit}
                       >
                         <X size={18} color="#ef4444" />
                       </button>
                     </div>
                   ) : (
                     <VoiceRecorder
-                      onAudioReady={(url, dur) => {
-                        setEditedAudioUrl(url);
-                        setEditedAudioDuration(dur);
+                      disabled={savingEdit}
+                      onAudioReady={(file, dur) => {
+                        addAudioFile(file, dur);
                       }}
                     />
                   )}
@@ -1514,7 +1485,7 @@ export default function InstructionDetailScreen({
               <div className="ids-edit-actions">
                 <button
                   className="ids-cancel-btn"
-                  onClick={() => setIsEditing(false)}
+                  onClick={handleCancelEdit}
                   disabled={savingEdit}
                 >
                   Cancel
@@ -1525,7 +1496,10 @@ export default function InstructionDetailScreen({
                   disabled={savingEdit}
                 >
                   {savingEdit ? (
-                    <span className="ids-spinner ids-spinner-white" />
+                    <>
+                      <span className="ids-spinner ids-spinner-white" />
+                      <span>Uploading…</span>
+                    </>
                   ) : (
                     <>
                       <Save size={16} color="#fff" />
@@ -1551,6 +1525,7 @@ export default function InstructionDetailScreen({
                       (instruction.photos ?? []).map((url) => ({
                         id: url,
                         localUrl: url,
+                        file: null,
                         url,
                         uploading: false,
                         progress: 100,
@@ -1560,12 +1535,15 @@ export default function InstructionDetailScreen({
                       (instruction.videos ?? []).map((url) => ({
                         id: url,
                         localUrl: url,
+                        file: null,
                         url,
                         uploading: false,
                         progress: 100,
                       })),
                     );
                     setEditedAudioUrl(instruction.audioUrl || null);
+                    setEditedAudioFile(null);
+                    setEditedAudioLocalUrl(null);
                     setEditedAudioDuration(instruction.audioDuration ?? null);
                     setEditedMode(instruction.audioUrl ? "record" : "write");
                     setIsEditing(true);
