@@ -86,8 +86,14 @@ function SourceBadge({ isOwner }) {
 // disablePictureInPicture/pointer-events — it's browser chrome, not a DOM
 // event. Instead we load the video off-screen just long enough to capture one
 // frame onto a canvas, then swap in a plain <img>. An <img> can never trigger
-// any native video affordances. Also works fine with local blob: URLs, so the
-// same component covers both saved videos and in-progress edit-mode uploads.
+// any native video affordances.
+//
+// crossOrigin="anonymous" is required here: Cloudinary URLs are cross-origin,
+// and canvas.toDataURL() throws a SecurityError on a "tainted" canvas unless
+// the source <video> was loaded with CORS permission. Without this attribute
+// the frame capture silently fails (caught below) and the thumbnail stays
+// blank forever — it has nothing to do with local blob: URLs, which aren't
+// cross-origin and work either way.
 function VideoThumbnail({
   url,
   iconSize = 28,
@@ -97,9 +103,11 @@ function VideoThumbnail({
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [thumbUrl, setThumbUrl] = useState(null);
+  const [captureFailed, setCaptureFailed] = useState(false);
 
   useEffect(() => {
     setThumbUrl(null);
+    setCaptureFailed(false);
   }, [url]);
 
   const captureFrame = () => {
@@ -114,7 +122,8 @@ function VideoThumbnail({
         .drawImage(video, 0, 0, canvas.width, canvas.height);
       setThumbUrl(canvas.toDataURL("image/jpeg", 0.82));
     } catch {
-      // Cross-origin or decode failure — just keep the placeholder background.
+      // CORS-tainted canvas or decode failure — fall back to icon-only box.
+      setCaptureFailed(true);
     }
   };
 
@@ -137,24 +146,28 @@ function VideoThumbnail({
       )}
 
       {/* Off-screen video used only to grab a single frame — never visible/hoverable */}
-      <video
-        ref={videoRef}
-        src={url}
-        muted
-        playsInline
-        preload="metadata"
-        style={{
-          position: "absolute",
-          width: 1,
-          height: 1,
-          opacity: 0,
-          pointerEvents: "none",
-        }}
-        onLoadedMetadata={(e) => {
-          e.currentTarget.currentTime = 0.1;
-        }}
-        onSeeked={captureFrame}
-      />
+      {!thumbUrl && !captureFailed && (
+        <video
+          ref={videoRef}
+          src={url}
+          crossOrigin="anonymous"
+          muted
+          playsInline
+          preload="metadata"
+          style={{
+            position: "absolute",
+            width: 1,
+            height: 1,
+            opacity: 0,
+            pointerEvents: "none",
+          }}
+          onLoadedMetadata={(e) => {
+            e.currentTarget.currentTime = 0.1;
+          }}
+          onSeeked={captureFrame}
+          onError={() => setCaptureFailed(true)}
+        />
+      )}
       <canvas ref={canvasRef} style={{ display: "none" }} />
 
       <div className="ids-media-play-btn">
@@ -329,7 +342,6 @@ export default function InstructionDetailScreen({
   const [editedMode, setEditedMode] = useState("write");
   const [savingEdit, setSavingEdit] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [backgroundUploadCount, setBackgroundUploadCount] = useState(0);
 
   const editedVideosRef = useRef([]);
   useEffect(() => {
@@ -586,7 +598,9 @@ export default function InstructionDetailScreen({
   // Fire-and-forget: the video shows up instantly as a local preview and
   // uploads in the background. The user can hit Save immediately — the URL
   // attaches itself (via queueVideoAppend) the moment the upload finishes,
-  // whether or not the edit form is still open.
+  // whether or not the edit form is still open. The thumbnail box itself is
+  // the only upload indicator — its spinner clears the moment the real
+  // Cloudinary-hosted frame renders in place of it.
   const handleAddVideo = (e) => {
     const file = e.target.files[0];
     e.target.value = "";
@@ -598,7 +612,6 @@ export default function InstructionDetailScreen({
       ...prev,
       { id, localUrl, url: null, uploading: true },
     ]);
-    setBackgroundUploadCount((c) => c + 1);
 
     const controller = new AbortController();
     videoControllersRef.current.set(id, controller);
@@ -619,7 +632,6 @@ export default function InstructionDetailScreen({
       })
       .finally(() => {
         videoControllersRef.current.delete(id);
-        setBackgroundUploadCount((c) => Math.max(0, c - 1));
       });
   };
 
@@ -692,31 +704,6 @@ export default function InstructionDetailScreen({
 
   return (
     <div className="ids-root">
-      {backgroundUploadCount > 0 && (
-        <div
-          style={{
-            position: "fixed",
-            top: 12,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "#1f2937",
-            color: "#fff",
-            padding: "8px 14px",
-            borderRadius: 20,
-            fontSize: 13,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            zIndex: 200,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
-          }}
-        >
-          <span className="ids-spinner ids-spinner-white" />
-          Uploading {backgroundUploadCount} video
-          {backgroundUploadCount > 1 ? "s" : ""} in background…
-        </div>
-      )}
-
       {/* ── Header ── */}
       <div className="ids-screen-header">
         <button className="ids-header-btn" onClick={onBack} aria-label="Back">
