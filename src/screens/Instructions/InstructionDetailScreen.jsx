@@ -14,6 +14,7 @@ import {
   Edit2,
   Save,
   Camera,
+  Images,
   Mic,
   Trash2,
   ChevronLeft,
@@ -384,6 +385,337 @@ function VoiceRecorder({ onAudioReady, disabled }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// CUSTOM IN-BROWSER CAMERA (multi-shot session, stays open across captures)
+// ══════════════════════════════════════════════════════════════════════════════
+// Why this exists: a plain <input type="file" accept="image/*" capture> hands
+// control to the OS/browser camera UI and closes back to the file picker after
+// every single shot — there's no way to keep it open for multiple photos.
+// This component opens the camera stream directly via getUserMedia and keeps
+// it running inside our own overlay, so the shutter button can be tapped as
+// many times as needed — with a running thumbnail strip and counter, just
+// like a native multi-shot camera screen — until the user taps "Done".
+function CustomCameraModal({ visible, onClose, onCapture }) {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const [sessionShots, setSessionShots] = useState([]);
+  const [permissionError, setPermissionError] = useState(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [isStarting, setIsStarting] = useState(true);
+
+  const stopStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    if (!visible) return;
+    setSessionShots([]);
+    setPermissionError(null);
+    setIsStarting(true);
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+        setIsStarting(false);
+      } catch (err) {
+        if (!cancelled) {
+          setPermissionError(
+            err.name === "NotAllowedError"
+              ? "Camera access was denied. Please allow camera access in your browser's site settings and try again."
+              : err.message || "Could not access the camera.",
+          );
+          setIsStarting(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      stopStream();
+      // Revoke any local preview blob URLs from this session.
+      setSessionShots((prev) => {
+        prev.forEach((s) => URL.revokeObjectURL(s.previewUrl));
+        return [];
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const handleShutter = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || isCapturing) return;
+    setIsCapturing(true);
+    const width = video.videoWidth || 1280;
+    const height = video.videoHeight || 720;
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d").drawImage(video, 0, 0, width, height);
+    canvas.toBlob(
+      (blob) => {
+        setIsCapturing(false);
+        if (!blob) return;
+        const file = new File([blob], `camera_${Date.now()}.jpg`, {
+          type: "image/jpeg",
+        });
+        const previewUrl = URL.createObjectURL(blob);
+        setSessionShots((prev) => [
+          ...prev,
+          { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, previewUrl },
+        ]);
+        onCapture(file); // parent adds it to the form + uploads in background, camera stays open
+      },
+      "image/jpeg",
+      0.85,
+    );
+  };
+
+  const handleClose = () => {
+    stopStream();
+    onClose();
+  };
+
+  if (!visible) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "#000",
+        zIndex: 1000,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {permissionError ? (
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#fff",
+            padding: 32,
+            gap: 8,
+            textAlign: "center",
+          }}
+        >
+          <Camera size={48} color="#9ca3af" />
+          <p style={{ fontSize: 18, fontWeight: 700, marginTop: 8 }}>
+            Camera access needed
+          </p>
+          <p style={{ fontSize: 14, color: "#9ca3af", maxWidth: 320 }}>
+            {permissionError}
+          </p>
+          <button
+            onClick={handleClose}
+            style={{
+              marginTop: 14,
+              padding: "10px 24px",
+              borderRadius: 10,
+              border: "none",
+              background: "#2563eb",
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: 15,
+              cursor: "pointer",
+            }}
+          >
+            Close
+          </button>
+        </div>
+      ) : (
+        <>
+          {isStarting && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 1,
+              }}
+            >
+              <span className="ids-spinner ids-spinner-white ids-spinner-lg" />
+            </div>
+          )}
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            style={{
+              flex: 1,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              background: "#000",
+            }}
+          />
+          <canvas ref={canvasRef} style={{ display: "none" }} />
+
+          {/* Top bar: close + running counter */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "16px 16px",
+            }}
+          >
+            <button
+              onClick={handleClose}
+              aria-label="Close camera"
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                background: "rgba(0,0,0,0.45)",
+                border: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <X size={20} color="#fff" />
+            </button>
+            {sessionShots.length > 0 && (
+              <div
+                style={{
+                  background: "rgba(37,99,235,0.9)",
+                  padding: "7px 14px",
+                  borderRadius: 20,
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                {sessionShots.length} photo{sessionShots.length > 1 ? "s" : ""} saved
+              </div>
+            )}
+            <div style={{ width: 38 }} />
+          </div>
+
+          {/* Bottom bar: thumbnail strip + shutter + Done */}
+          <div
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              paddingBottom: 20,
+            }}
+          >
+            {sessionShots.length > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  overflowX: "auto",
+                  gap: 8,
+                  padding: "0 16px 14px",
+                }}
+              >
+                {sessionShots.map((s) => (
+                  <img
+                    key={s.id}
+                    src={s.previewUrl}
+                    alt=""
+                    style={{
+                      width: 54,
+                      height: 54,
+                      borderRadius: 8,
+                      objectFit: "cover",
+                      border: "2px solid #fff",
+                      flexShrink: 0,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0 24px",
+              }}
+            >
+              <div style={{ width: 74 }} />
+              <button
+                onClick={handleShutter}
+                disabled={isCapturing || isStarting}
+                aria-label="Take photo"
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: 36,
+                  background: "#fff",
+                  border: "4px solid rgba(255,255,255,0.35)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: isCapturing || isStarting ? "default" : "pointer",
+                  opacity: isCapturing || isStarting ? 0.6 : 1,
+                  padding: 0,
+                }}
+              >
+                <div
+                  style={{
+                    width: 58,
+                    height: 58,
+                    borderRadius: 29,
+                    background: "#fff",
+                    border: "2px solid #1f2937",
+                  }}
+                />
+              </button>
+              <button
+                onClick={handleClose}
+                style={{
+                  width: 74,
+                  textAlign: "right",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: 16,
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
 export default function InstructionDetailScreen({
@@ -439,6 +771,9 @@ export default function InstructionDetailScreen({
   const [editedAudioDuration, setEditedAudioDuration] = useState(null);
   const [editedMode, setEditedMode] = useState("write");
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // In-app multi-shot camera session (photos only — see CustomCameraModal above)
+  const [cameraModalVisible, setCameraModalVisible] = useState(false);
 
   const editedPhotosRef = useRef([]);
   useEffect(() => {
@@ -738,32 +1073,24 @@ export default function InstructionDetailScreen({
     }
   };
 
-  // Fire-and-forget, one placeholder per file: each selected photo shows up
-  // instantly as its own local preview and uploads in the background,
-  // independently of the others. The user can hit Save immediately —
-  // completed photo URLs go in right away, and any still uploading attach
-  // themselves (via queuePhotoAppend) the moment they finish, whether or not
-  // the edit form is still open. Mirrors handleAddVideo below.
-  //
-  // Each photo is compressed client-side before it's sent, and a live
-  // progress percentage is tracked so the user can actually see it moving
-  // instead of staring at an indefinite spinner.
-  const handleAddPhoto = (e) => {
-    const files = Array.from(e.target.files);
-    e.target.value = "";
-    if (!files.length) return;
+  // Shared upload pipeline for a single photo File, regardless of whether it
+  // came from the file picker (gallery) or the in-app multi-shot camera
+  // (CustomCameraModal). Adds an instant local-preview placeholder, then
+  // compresses + uploads in the background — the user can hit Save
+  // immediately, and queuePhotoAppend attaches it the moment it finishes,
+  // whether or not the edit form is still open. Mirrors addVideoFile below.
+  const addPhotoFile = (file) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const localUrl = URL.createObjectURL(file);
+    setEditedPhotos((prev) => [
+      ...prev,
+      { id, localUrl, url: null, uploading: true, progress: 0 },
+    ]);
 
-    files.forEach(async (file) => {
-      const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const localUrl = URL.createObjectURL(file);
-      setEditedPhotos((prev) => [
-        ...prev,
-        { id, localUrl, url: null, uploading: true, progress: 0 },
-      ]);
+    const controller = new AbortController();
+    photoControllersRef.current.set(id, controller);
 
-      const controller = new AbortController();
-      photoControllersRef.current.set(id, controller);
-
+    (async () => {
       try {
         const toUpload = await compressImage(file);
         if (cancelledPhotoIdsRef.current.has(id)) return;
@@ -788,7 +1115,23 @@ export default function InstructionDetailScreen({
       } finally {
         photoControllersRef.current.delete(id);
       }
-    });
+    })();
+  };
+
+  // Fire-and-forget, one placeholder per file, for photos picked from the
+  // regular file input (device gallery / file browser). See addPhotoFile
+  // above for the shared upload pipeline.
+  const handleAddPhoto = (e) => {
+    const files = Array.from(e.target.files);
+    e.target.value = "";
+    if (!files.length) return;
+    files.forEach(addPhotoFile);
+  };
+
+  // Called once per shutter-press from the in-app multi-shot camera. The
+  // camera modal itself stays open across captures — see CustomCameraModal.
+  const handleCameraCapture = (file) => {
+    addPhotoFile(file);
   };
 
   const handleRemovePhoto = (id) => {
@@ -1027,8 +1370,21 @@ export default function InstructionDetailScreen({
                     </button>
                   </div>
                 ))}
-                <label className="ids-media-add">
+
+                {/* Camera: opens the in-app multi-shot camera session
+                    (stays open across captures — see CustomCameraModal). */}
+                <button
+                  type="button"
+                  className="ids-media-add"
+                  onClick={() => setCameraModalVisible(true)}
+                  aria-label="Take photos with camera"
+                >
                   <Camera size={22} color="#9ca3af" />
+                </button>
+
+                {/* Gallery: pick one or more existing photos from disk. */}
+                <label className="ids-media-add" aria-label="Choose photos from device">
+                  <Images size={22} color="#9ca3af" />
                   <input
                     type="file"
                     accept="image/*"
@@ -1420,6 +1776,13 @@ export default function InstructionDetailScreen({
           onTouchEnd={handleTouchEnd}
         />
       )}
+
+      {/* ── In-app multi-shot camera (photos only) ── */}
+      <CustomCameraModal
+        visible={cameraModalVisible}
+        onClose={() => setCameraModalVisible(false)}
+        onCapture={handleCameraCapture}
+      />
     </div>
   );
 }
