@@ -36,7 +36,7 @@
   min-height: 100vh;
   width: 100%;
   max-width: 100vw;
-  overflow-x: hidden;
+  overflow-x: clip;
   background-color: var(--paper);
   color: var(--ink);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -352,7 +352,7 @@
 .ls-contact-actions { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; }
 
 /* ── Footer ── */
-.ls-footer { border-top: 1px solid var(--line); background: var(--surface); position: relative; z-index: 1; }
+.ls-footer { border-top: 1px solid var(--line); background: var(--surface); position: relative; z-index: 1; padding-bottom: 90px; }
 .ls-footer-inner { max-width: 1180px; margin: 0 auto; padding: 28px 20px; display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
 .ls-footer-brand p { display: flex; align-items: center; gap: 6px; color: var(--slate); font-size: 13px; margin: 6px 0 0; }
 .ls-footer-legal { display: flex; align-items: center; gap: 12px; }
