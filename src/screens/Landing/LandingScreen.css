@@ -1,6 +1,8 @@
 /* ── LandingScreen.css ───────────────────────────────────────────────────
    Public marketing home. Reuses the CNS token system from HomeScreen.css
-   so the pre-login site and the post-login app feel like one product.
+   so the pre-login site and the post-login app feel like one product —
+   with a layer of scroll reveals, a live animated hero visual, and small
+   deliberate motion accents on top.
    ─────────────────────────────────────────────────────────────────────── */
 
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap');
@@ -11,6 +13,7 @@
   --surface: #FFFFFF;
   --route: #2A52E8;
   --route-dark: #1E3EC2;
+  --route-glow: #7DA0FF;
   --signal: #F2A93B;
   --slate: #626C7A;
   --line: #E2E5EA;
@@ -30,19 +33,35 @@
 .ls-root :focus-visible { outline: 2px solid var(--route); outline-offset: 2px; }
 .ls-root a { text-decoration: none; color: inherit; }
 
+/* ── Scroll reveal ──────────────────────────────────────────────────────
+   One consistent rise-and-fade used everywhere, staggered per element via
+   an inline transition-delay — an orchestrated read down the page rather
+   than lots of different effects competing for attention. */
+.ls-reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.75s cubic-bezier(.16,.84,.32,1), transform 0.75s cubic-bezier(.16,.84,.32,1);
+  will-change: opacity, transform;
+}
+.ls-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 /* ── Nav ── */
 .ls-nav {
   position: sticky;
   top: 0;
-  z-index: 30;
-  background: rgba(245, 246, 243, 0.85);
-  backdrop-filter: blur(8px);
+  z-index: 40;
+  background: rgba(245, 246, 243, 0.82);
+  backdrop-filter: blur(10px);
   border-bottom: 1px solid transparent;
-  transition: border-color 0.2s, background 0.2s;
+  transition: border-color 0.25s, background 0.25s, box-shadow 0.25s;
 }
 .ls-nav--scrolled {
   background: rgba(245, 246, 243, 0.96);
   border-bottom-color: var(--line);
+  box-shadow: 0 4px 18px rgba(19, 27, 46, 0.05);
 }
 
 .ls-nav-inner {
@@ -72,6 +91,7 @@
   border-radius: 50%;
   background: var(--signal);
   flex-shrink: 0;
+  animation: ls-dot-pulse 2.6s ease-in-out infinite;
 }
 
 .ls-nav-links {
@@ -113,10 +133,14 @@
   border-radius: 10px;
   border: none;
   white-space: nowrap;
-  transition: background-color 0.15s, transform 0.1s;
+  transition: background-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
-.ls-btn-primary:hover { background: var(--route-dark); }
-.ls-btn-primary:active { transform: scale(0.98); }
+.ls-btn-primary:hover {
+  background: var(--route-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(42, 82, 232, 0.28);
+}
+.ls-btn-primary:active { transform: translateY(0) scale(0.98); }
 
 .ls-btn-ghost {
   display: inline-flex;
@@ -130,23 +154,55 @@
   border-radius: 10px;
   border: 1px solid var(--line);
   white-space: nowrap;
-  transition: border-color 0.15s, color 0.15s;
+  transition: border-color 0.15s, color 0.15s, transform 0.15s;
 }
-.ls-btn-ghost:hover { border-color: var(--route); color: var(--route); }
+.ls-btn-ghost:hover { border-color: var(--route); color: var(--route); transform: translateY(-1px); }
 
 .ls-btn-large { padding: 13px 24px; font-size: 15.5px; }
 .ls-btn-on-dark { border-color: rgba(255,255,255,0.25); color: #fff; }
 .ls-btn-on-dark:hover { border-color: #fff; color: #fff; }
 
+/* Soft breathing glow behind the hero's main CTA — draws the eye without
+   shouting; a single ping ring, not a firework. */
+.ls-cta-pulse { position: relative; display: inline-flex; border-radius: 10px; }
+.ls-cta-pulse::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  box-shadow: 0 0 0 0 rgba(42, 82, 232, 0.35);
+  animation: ls-cta-ping 2.6s ease-out infinite;
+  pointer-events: none;
+}
+
 /* ── Hero ── */
 .ls-hero {
+  position: relative;
   max-width: 1180px;
   margin: 0 auto;
-  padding: 64px 20px 40px;
+  padding: 68px 20px 48px;
   display: grid;
   grid-template-columns: 1.05fr 0.95fr;
   gap: 40px;
   align-items: center;
+  overflow: hidden;
+}
+
+.ls-hero-ambient {
+  position: absolute;
+  inset: -20% -10%;
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: 28px 28px;
+  opacity: 0.55;
+  animation: ls-drift 60s linear infinite;
+  pointer-events: none;
+  z-index: 0;
+  mask-image: radial-gradient(60% 60% at 50% 40%, #000 40%, transparent 90%);
+}
+
+.ls-hero-copy, .ls-hero-visual {
+  position: relative;
+  z-index: 1;
 }
 
 .ls-eyebrow {
@@ -166,11 +222,20 @@
 .ls-headline {
   font-family: 'Space Grotesk', sans-serif;
   font-weight: 700;
-  font-size: 42px;
+  font-size: 43px;
   line-height: 1.1;
   letter-spacing: -0.02em;
   margin: 0 0 18px;
   overflow-wrap: break-word;
+}
+
+.ls-headline-gradient {
+  background: linear-gradient(100deg, var(--route) 0%, var(--signal) 45%, var(--route) 100%);
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ls-gradient-shift 7s ease-in-out infinite;
 }
 
 .ls-subhead {
@@ -195,53 +260,113 @@
   margin: 0;
 }
 
-.ls-hero-visual {
+/* ── Hero visual — the "console" card ── */
+.ls-hero-visual { display: flex; justify-content: center; }
+
+.ls-console {
+  width: 100%;
+  max-width: 440px;
+  background: linear-gradient(180deg, #182233 0%, var(--ink) 100%);
+  border-radius: 22px;
+  padding: 22px 22px 20px;
+  box-shadow: 0 24px 60px rgba(19, 27, 46, 0.28), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  position: relative;
+  overflow: hidden;
+}
+.ls-console::after {
+  /* faint top sheen so the dark card doesn't read as a flat rectangle */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, rgba(255,255,255,0.06), transparent 45%);
+  pointer-events: none;
+}
+
+.ls-console-head {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.ls-console-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--signal);
+  letter-spacing: 0.02em;
+}
+.ls-console-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--signal);
+  animation: ls-dot-pulse 1.8s ease-in-out infinite;
+}
+.ls-console-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
 }
 
 .ls-knowledge-map {
   width: 100%;
-  max-width: 420px;
   height: auto;
+  display: block;
 }
 
 .ls-km-line {
-  stroke: var(--line);
+  stroke: rgba(255,255,255,0.14);
   stroke-width: 1.75;
   stroke-dasharray: 1 7;
   stroke-linecap: round;
+  fill: none;
   opacity: 0;
-  animation: ls-fade-in 0.5s ease forwards;
+  animation: ls-fade-in 0.6s ease forwards;
 }
-.ls-km-node circle {
-  fill: var(--surface);
-  stroke: var(--route);
-  stroke-width: 2.5;
+.ls-km-pulse {
+  fill: var(--route-glow);
+  filter: drop-shadow(0 0 4px rgba(125, 160, 255, 0.9));
+}
+.ls-km-node circle:first-child {
+  fill: rgba(255,255,255,0.03);
+  stroke: var(--route-glow);
+  stroke-width: 2.25;
   opacity: 0;
   transform-origin: center;
-  animation: ls-pop-in 0.45s ease forwards;
+  animation: ls-pop-in 0.5s ease forwards;
 }
-.ls-km-hub circle:first-child { fill: var(--ink); }
+.ls-km-node-dot {
+  fill: var(--route-glow);
+  opacity: 0;
+  animation: ls-fade-in 0.5s ease forwards;
+  animation-delay: inherit;
+}
+.ls-km-hub-fill { fill: var(--surface); }
+.ls-km-hub-label {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  fill: var(--ink);
+}
 .ls-km-hub-ring {
   fill: none;
   stroke: var(--signal);
-  stroke-width: 2;
-  stroke-dasharray: 2 6;
-  animation: ls-spin 14s linear infinite;
-  transform-origin: 300px 190px;
+  stroke-width: 1.5;
+  opacity: 0;
+  transform-origin: 300px 194px;
+  animation: ls-ping 3.2s ease-out infinite;
 }
+.ls-km-hub-ring--2 { animation-delay: 1.6s; }
 
-@keyframes ls-fade-in { to { opacity: 0.7; } }
-@keyframes ls-pop-in { to { opacity: 1; transform: scale(1); } from { transform: scale(0.4); } }
-@keyframes ls-spin { to { transform: rotate(360deg); } }
-
-.ls-hero-visual-caption {
+.ls-console-caption {
+  display: block;
+  margin-top: 12px;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 12px;
-  color: var(--slate);
+  line-height: 1.5;
+  color: rgba(255,255,255,0.55);
   text-align: center;
 }
 
@@ -249,7 +374,7 @@
 .ls-section {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 64px 20px;
+  padding: 68px 20px;
 }
 .ls-section--tint {
   max-width: 100%;
@@ -288,17 +413,24 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
+
+/* Tilt wrapper: perspective rotation driven by --tiltX/--tiltY, set via JS
+   on mousemove. Kept on its own element so Reveal's translateY (on the
+   parent) and this rotation never fight over the same transform. */
+.ls-tilt {
+  transform: perspective(900px) rotateX(var(--tiltX, 0deg)) rotateY(var(--tiltY, 0deg));
+  transition: transform 0.2s ease, border-color 0.15s, box-shadow 0.15s;
+}
+
 .ls-feature-card {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 24px;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
 }
 .ls-feature-card:hover {
   border-color: var(--route);
-  box-shadow: 0 8px 24px rgba(19, 27, 46, 0.08);
-  transform: translateY(-2px);
+  box-shadow: 0 14px 32px rgba(19, 27, 46, 0.10);
 }
 .ls-feature-icon {
   width: 38px;
@@ -310,6 +442,11 @@
   align-items: center;
   justify-content: center;
   margin-bottom: 16px;
+  transition: background-color 0.2s, color 0.2s;
+}
+.ls-feature-card:hover .ls-feature-icon {
+  background: var(--route);
+  color: #fff;
 }
 .ls-feature-card h3 {
   font-family: 'Space Grotesk', sans-serif;
@@ -335,6 +472,12 @@
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 26px 22px;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.ls-step-card:hover {
+  border-color: var(--route);
+  transform: translateY(-3px);
+  box-shadow: 0 14px 28px rgba(19, 27, 46, 0.08);
 }
 .ls-step-index {
   display: block;
@@ -393,10 +536,12 @@
 .ls-roi-bar-fill {
   height: 100%;
   border-radius: 100px;
-  transition: width 0.6s ease;
+  transition: width 1s cubic-bezier(.16,.84,.32,1);
 }
 .ls-roi-bar-fill--dark { background: var(--ink); opacity: 0.75; }
-.ls-roi-bar-fill--route { background: var(--route); }
+.ls-roi-bar-fill--route {
+  background: linear-gradient(90deg, var(--route), var(--route-glow));
+}
 .ls-roi-bar-value {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 12px;
@@ -424,6 +569,7 @@
   font-size: 22px;
   font-weight: 700;
   color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
 .ls-roi-stat-label {
   font-size: 12.5px;
@@ -446,7 +592,29 @@
   border-radius: 16px;
   padding: 32px;
   text-align: center;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
+.ls-pricing-card:hover {
+  border-color: var(--route);
+  box-shadow: 0 20px 44px rgba(19, 27, 46, 0.12);
+  transform: translateY(-3px);
+}
+.ls-pricing-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(120deg, transparent, rgba(42, 82, 232, 0.14), transparent);
+  transform: skewX(-20deg);
+  transition: left 0.75s ease;
+  pointer-events: none;
+}
+.ls-pricing-card:hover::before { left: 130%; }
+
 .ls-pricing-price {
   display: flex;
   align-items: baseline;
@@ -487,12 +655,16 @@
 .ls-contact {
   background: var(--ink);
   color: #fff;
+  position: relative;
+  overflow: hidden;
 }
 .ls-contact-inner {
   max-width: 640px;
   margin: 0 auto;
-  padding: 72px 20px;
+  padding: 76px 20px;
   text-align: center;
+  position: relative;
+  z-index: 1;
 }
 .ls-contact-inner h2 {
   font-family: 'Space Grotesk', sans-serif;
@@ -559,11 +731,66 @@
   background: var(--line);
 }
 
+/* ── Floating CTA ── */
+.ls-floating-cta {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 13px 20px;
+  border: none;
+  border-radius: 100px;
+  box-shadow: 0 14px 32px rgba(19, 27, 46, 0.28);
+  opacity: 0;
+  transform: translateY(16px) scale(0.96);
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.15s;
+}
+.ls-floating-cta.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+.ls-floating-cta:hover { background: var(--route); }
+
+/* ── Keyframes ── */
+@keyframes ls-fade-in { to { opacity: 0.85; } }
+@keyframes ls-pop-in { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: scale(1); } }
+@keyframes ls-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(1.3); }
+}
+@keyframes ls-ping {
+  0% { opacity: 0.55; transform: scale(0.9); }
+  100% { opacity: 0; transform: scale(1.55); }
+}
+@keyframes ls-cta-ping {
+  0% { box-shadow: 0 0 0 0 rgba(42, 82, 232, 0.35); }
+  70% { box-shadow: 0 0 0 14px rgba(42, 82, 232, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(42, 82, 232, 0); }
+}
+@keyframes ls-gradient-shift {
+  0%, 100% { background-position: 0% center; }
+  50% { background-position: 100% center; }
+}
+@keyframes ls-drift {
+  from { background-position: 0 0; }
+  to { background-position: 280px 280px; }
+}
+
 /* ── Responsive ── */
 @media (max-width: 980px) {
   .ls-hero { grid-template-columns: 1fr; text-align: center; padding-top: 48px; }
   .ls-hero-copy { display: flex; flex-direction: column; align-items: center; }
   .ls-subhead { margin-left: auto; margin-right: auto; }
+  .ls-hero-visual { margin-top: 12px; }
   .ls-feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ls-step-grid { grid-template-columns: minmax(0, 1fr); }
   .ls-roi-stats { grid-template-columns: minmax(0, 1fr); gap: 20px; }
@@ -576,16 +803,33 @@
   .ls-roi-bar-row { grid-template-columns: 1fr; gap: 6px; text-align: left; }
   .ls-roi-bar-value { text-align: left; }
   .ls-footer-inner { flex-direction: column; align-items: flex-start; }
+  .ls-floating-cta { right: 14px; bottom: 14px; padding: 11px 16px; font-size: 13px; }
 }
 
 /* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
-  .ls-km-line, .ls-km-node circle, .ls-km-hub-ring {
-    animation: none;
+  .ls-reveal {
     opacity: 1;
     transform: none;
+    transition: none;
   }
-  .ls-feature-card, .ls-btn-primary, .ls-roi-bar-fill {
+  .ls-wordmark-dot,
+  .ls-console-live-dot,
+  .ls-km-hub-ring,
+  .ls-km-line,
+  .ls-km-node circle:first-child,
+  .ls-km-node-dot,
+  .ls-headline-gradient,
+  .ls-hero-ambient,
+  .ls-cta-pulse::before,
+  .ls-floating-cta {
+    animation: none !important;
+  }
+  .ls-km-line, .ls-km-node circle:first-child, .ls-km-node-dot {
+    opacity: 0.85;
+  }
+  .ls-feature-card, .ls-btn-primary, .ls-btn-ghost, .ls-roi-bar-fill,
+  .ls-pricing-card, .ls-step-card, .ls-tilt {
     transition: none;
   }
 }
