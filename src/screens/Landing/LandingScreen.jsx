@@ -1,559 +1,434 @@
-import { useState, useEffect, useRef } from "react";
-import {
-  Share2, GraduationCap, PhoneOff, Smile, ArrowUpRight,
-  CheckCircle2, TrendingUp, Mail, MapPin,
-} from "lucide-react";
-import { API_ENDPOINTS } from "../../constants/network";
-import "./LandingScreen.css";
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import './LandingScreen.css';
 
-// ── Config ────────────────────────────────────────────────────────────────
-// Swap this for your real inbox before shipping.
-const CONTACT_EMAIL = "hello@cnsapp.com";
+/* ────────────────────────────────────────────────────────────────────────
+   Small inline icon set — no external icon library dependency, so this
+   file drops into any React/React-Native-web setup as-is.
+   ──────────────────────────────────────────────────────────────────── */
+const iconProps = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
 
-// Marketing-page assumption used to translate reclaimed minutes into a
-// dollar figure. Kept as one named constant so it's obvious where the "10x"
-// headline number comes from, and easy to change later.
-const ASSUMED_HOURLY_WAGE = 30;
-const MINUTES_RECLAIMED_PER_MONTH = 200;
+const IconNetwork = (p) => (
+  <svg {...iconProps} width={p.size || 20} height={p.size || 20}>
+    <circle cx="12" cy="5" r="2.4" /><circle cx="5" cy="19" r="2.4" /><circle cx="19" cy="19" r="2.4" />
+    <path d="M12 7.4 L6.2 17.1 M12 7.4 L17.8 17.1 M7.4 19 L16.6 19" />
+  </svg>
+);
+const IconRoute = (p) => (
+  <svg {...iconProps} width={p.size || 20} height={p.size || 20}>
+    <circle cx="5" cy="6" r="2.2" /><circle cx="19" cy="18" r="2.2" />
+    <path d="M5 8.2 C5 13 8 11 12 13 C16 15 19 13 19 15.8" />
+  </svg>
+);
+const IconCapOff = (p) => (
+  <svg {...iconProps} width={p.size || 20} height={p.size || 20}>
+    <path d="M3 9.5 12 5l9 4.5-9 4.5-9-4.5Z" />
+    <path d="M7 11.6v4c0 1.4 2.2 2.9 5 2.9s5-1.5 5-2.9v-4" />
+    <path d="M3 15V9.5" strokeDasharray="1 3" />
+  </svg>
+);
+const IconPhoneOff = (p) => (
+  <svg {...iconProps} width={p.size || 20} height={p.size || 20}>
+    <path d="M9.5 5.3 7.7 4a1.7 1.7 0 0 0-2.3.3L4.2 6.1c-.5.6-.5 1.5.1 2.4a17 17 0 0 0 3.9 4.2" />
+    <path d="M11.4 12.9a17 17 0 0 0 4.2 3.9c.9.6 1.8.6 2.4.1l1.8-1.2a1.7 1.7 0 0 0 .3-2.3l-1.3-1.8" />
+    <path d="M3 3l18 18" />
+  </svg>
+);
+const IconSmile = (p) => (
+  <svg {...iconProps} width={p.size || 20} height={p.size || 20}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M8 13.5c1 1.6 2.4 2.4 4 2.4s3-.8 4-2.4" />
+    <path d="M8.5 9.5h.01M15.5 9.5h.01" />
+  </svg>
+);
+const IconRefresh = (p) => (
+  <svg {...iconProps} width={p.size || 20} height={p.size || 20}>
+    <path d="M20 11a8 8 0 0 0-14.6-4.4M4 4v4h4" />
+    <path d="M4 13a8 8 0 0 0 14.6 4.4M20 20v-4h-4" />
+  </svg>
+);
+const IconCheck = (p) => (
+  <svg {...iconProps} width={p.size || 16} height={p.size || 16}>
+    <path d="M4 12.5 9 17.5 20 6.5" />
+  </svg>
+);
+const IconArrowRight = (p) => (
+  <svg {...iconProps} width={p.size || 16} height={p.size || 16}>
+    <path d="M4 12h16M13 5l7 7-7 7" />
+  </svg>
+);
+const IconClock = (p) => (
+  <svg {...iconProps} width={p.size || 18} height={p.size || 18}>
+    <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.2 2" />
+  </svg>
+);
+const IconTrend = (p) => (
+  <svg {...iconProps} width={p.size || 18} height={p.size || 18}>
+    <path d="M3 17l6-6 4 4 8-9" /><path d="M15 6h6v6" />
+  </svg>
+);
+const IconShield = (p) => (
+  <svg {...iconProps} width={p.size || 18} height={p.size || 18}>
+    <path d="M12 3l7 3v6c0 5-3.5 7.7-7 9-3.5-1.3-7-4-7-9V6l7-3Z" />
+    <path d="M9 12l2 2 4-4" />
+  </svg>
+);
+const IconShieldSm = (p) => <IconShield size={16} {...p} />;
+const IconClockSm = (p) => <IconClock size={16} {...p} />;
 
-// ── Motion-aware helpers ──────────────────────────────────────────────────
+/* ────────────────────────────────────────────────────────────────────────
+   Hooks
+   ──────────────────────────────────────────────────────────────────── */
 
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(false);
+/** Fades/rises every .ls-reveal element into view once, on first intersect. */
+function useScrollReveal(rootRef) {
   useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mq.matches);
-    const handler = (e) => setReduced(e.matches);
-    if (mq.addEventListener) mq.addEventListener("change", handler);
-    else mq.addListener(handler);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", handler);
-      else mq.removeListener(handler);
-    };
-  }, []);
-  return reduced;
+    const root = rootRef.current;
+    if (!root) return;
+    const els = root.querySelectorAll('.ls-reveal');
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            io.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.15, rootMargin: '0px 0px -40px 0px' }
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [rootRef]);
 }
 
-// Scroll-reveal: an element fades/rises in the first time it enters the
-// viewport, then leaves its transition alone. Falls back to "always
-// visible" if IntersectionObserver isn't available.
-function useReveal(threshold = 0.2) {
+/** Animates a number from 0 → target the first time the element scrolls into view. */
+function useCountUp(target, { duration = 1200, decimals = 0 } = {}) {
   const ref = useRef(null);
-  const [visible, setVisible] = useState(
-    typeof window === "undefined" || typeof IntersectionObserver === "undefined"
-  );
+  const [value, setValue] = useState(0);
+
   useEffect(() => {
-    if (typeof IntersectionObserver === "undefined") return;
     const el = ref.current;
     if (!el) return;
+    let raf;
     const io = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const start = performance.now();
+          const tick = (now) => {
+            const t = Math.min(1, (now - start) / duration);
+            const eased = 1 - Math.pow(1 - t, 3);
+            setValue(Number((target * eased).toFixed(decimals)));
+            if (t < 1) raf = requestAnimationFrame(tick);
+          };
+          raf = requestAnimationFrame(tick);
           io.unobserve(el);
-        }
+        });
       },
-      { threshold }
+      { threshold: 0.4 }
     );
     io.observe(el);
-    return () => io.disconnect();
-  }, [threshold]);
-  return [ref, visible];
+    return () => { io.disconnect(); if (raf) cancelAnimationFrame(raf); };
+  }, [target, duration, decimals]);
+
+  return [ref, value];
 }
 
-function Reveal({ children, delay = 0, className = "", as: Tag = "div", ...rest }) {
-  const [ref, visible] = useReveal();
-  return (
-    <Tag
-      ref={ref}
-      className={`ls-reveal ${visible ? "is-visible" : ""} ${className}`}
-      style={{ transitionDelay: visible ? `${delay}ms` : "0ms" }}
-      {...rest}
-    >
-      {children}
-    </Tag>
-  );
-}
-
-// Counts a number up from 0 once its container scrolls into view.
-function CountUp({ value, formatter, duration = 1100 }) {
-  const [ref, visible] = useReveal(0.5);
-  const [display, setDisplay] = useState(0);
-  const reduced = usePrefersReducedMotion();
-
-  useEffect(() => {
-    if (!visible) return;
-    if (reduced) { setDisplay(value); return; }
-    let raf;
-    let start = null;
-    const step = (ts) => {
-      if (start === null) start = ts;
-      const progress = Math.min((ts - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3); // ease-out-cubic
-      setDisplay(value * eased);
-      if (progress < 1) raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [visible, value, duration, reduced]);
-
-  return <span ref={ref}>{formatter(display)}</span>;
-}
-
-// Subtle cursor-tilt on hover — purely a hover affordance, so it's a no-op
-// (and never wired up) when the visitor prefers reduced motion.
-function TiltCard({ children, className = "" }) {
+/** Subtle perspective tilt on a card, following the cursor. */
+function useTilt(maxDeg = 6) {
   const ref = useRef(null);
-  const reduced = usePrefersReducedMotion();
-
-  const handleMove = (e) => {
-    if (reduced || !ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
+  const onMouseMove = useCallback((e) => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
     const px = (e.clientX - rect.left) / rect.width - 0.5;
     const py = (e.clientY - rect.top) / rect.height - 0.5;
-    ref.current.style.setProperty("--tiltX", `${py * -5}deg`);
-    ref.current.style.setProperty("--tiltY", `${px * 5}deg`);
-  };
-  const handleLeave = () => {
-    if (!ref.current) return;
-    ref.current.style.setProperty("--tiltX", "0deg");
-    ref.current.style.setProperty("--tiltY", "0deg");
-  };
-
-  return (
-    <div
-      ref={ref}
-      className={`ls-tilt ${className}`}
-      onMouseMove={handleMove}
-      onMouseLeave={handleLeave}
-    >
-      {children}
-    </div>
-  );
+    el.style.setProperty('--tiltY', `${(px * maxDeg * 2).toFixed(2)}deg`);
+    el.style.setProperty('--tiltX', `${(-py * maxDeg * 2).toFixed(2)}deg`);
+  }, [maxDeg]);
+  const onMouseLeave = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.setProperty('--tiltX', '0deg');
+    el.style.setProperty('--tiltY', '0deg');
+  }, []);
+  return { ref, onMouseMove, onMouseLeave };
 }
 
-// ── KnowledgeMap — signature element ─────────────────────────────────────
-// The product's whole pitch is "one driver's route knowledge becomes every
-// driver's knowledge." Rather than an icon, the hero shows that literally,
-// live: five driver nodes, one shared hub, and a steady stream of light
-// pulses traveling from every node into the hub — knowledge flowing in
-// from everywhere, continuously, with no node more central than another.
+/* ────────────────────────────────────────────────────────────────────────
+   Hero visual — an animated "knowledge network": one hub, every driver
+   connected to it and to each other's knowledge, pulses of information
+   travelling the lines on loop.
+   ──────────────────────────────────────────────────────────────────── */
 function KnowledgeMap() {
-  const reduced = usePrefersReducedMotion();
   const nodes = [
-    { x: 300, y: 44 },
-    { x: 512, y: 152 },
-    { x: 436, y: 336 },
-    { x: 164, y: 336 },
-    { x: 88, y: 152 },
+    { x: 110, y: 78 }, { x: 486, y: 78 }, { x: 86, y: 258 },
+    { x: 300, y: 292 }, { x: 512, y: 258 },
   ];
-  const center = { x: 300, y: 194 };
+  const hub = { x: 300, y: 176 };
+  const paths = nodes.map((n) => `M${hub.x} ${hub.y} L${n.x} ${n.y}`);
 
   return (
-    <svg className="ls-knowledge-map" viewBox="0 0 600 380" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      {nodes.map((n, i) => (
-        <path
-          key={`path-${i}`}
-          id={`ls-route-path-${i}`}
-          d={`M ${n.x} ${n.y} L ${center.x} ${center.y}`}
-          className="ls-km-line"
-          style={{ animationDelay: `${i * 0.12}s` }}
-        />
+    <svg className="ls-knowledge-map" viewBox="0 0 600 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Network showing every driver connected to a shared knowledge hub">
+      {paths.map((d, i) => (
+        <path key={`line-${i}`} className="ls-km-line" d={d} style={{ animationDelay: `${i * -0.4}s` }} />
       ))}
-
-      {/* Traveling knowledge pulses — SMIL animateMotion, skipped entirely
-          under reduced motion rather than just visually hidden. */}
-      {!reduced && nodes.map((_, i) => (
-        <circle key={`pulse-${i}`} r="3.5" className="ls-km-pulse">
-          <animateMotion dur="2.6s" repeatCount="indefinite" begin={`${i * 0.42}s`}>
-            <mpath href={`#ls-route-path-${i}`} />
-          </animateMotion>
-        </circle>
+      {paths.map((d, i) => (
+        <circle key={`pulse-${i}`} className="ls-km-pulse" r="4"
+          style={{ offsetPath: `path('${d}')`, animationDelay: `${i * 0.55}s` }} />
       ))}
-
       {nodes.map((n, i) => (
-        <g key={`node-${i}`} className="ls-km-node" style={{ animationDelay: `${0.4 + i * 0.12}s` }}>
-          <circle cx={n.x} cy={n.y} r="15" />
-          <circle cx={n.x} cy={n.y} r="4" className="ls-km-node-dot" />
+        <g key={`node-${i}`} className="ls-km-node" style={{ animationDelay: `${0.15 + i * 0.12}s` }}>
+          <circle cx={n.x} cy={n.y} r="22" style={{ animationDelay: `${0.15 + i * 0.12}s` }} />
+          <circle className="ls-km-node-dot" cx={n.x} cy={n.y} r="4.5" style={{ animationDelay: `${0.15 + i * 0.12}s` }} />
         </g>
       ))}
-
-      <g className="ls-km-hub">
-        <circle cx={center.x} cy={center.y} r="34" className="ls-km-hub-ring ls-km-hub-ring--1" />
-        <circle cx={center.x} cy={center.y} r="34" className="ls-km-hub-ring ls-km-hub-ring--2" />
-        <circle cx={center.x} cy={center.y} r="30" className="ls-km-hub-fill" />
-        <text x={center.x} y={center.y + 5} textAnchor="middle" className="ls-km-hub-label">CNS</text>
-      </g>
+      <circle className="ls-km-hub-ring" cx={hub.x} cy={hub.y} r="34" />
+      <circle className="ls-km-hub-ring ls-km-hub-ring--2" cx={hub.x} cy={hub.y} r="34" />
+      <circle className="ls-km-hub-fill" cx={hub.x} cy={hub.y} r="30" stroke="var(--route-glow)" strokeWidth="2" />
+      <text className="ls-km-hub-label" x={hub.x} y={hub.y + 4} textAnchor="middle">CNS</text>
     </svg>
   );
 }
 
-// ── Small reusable bits ──────────────────────────────────────────────────
-function SectionEyebrow({ children }) {
-  return <span className="ls-eyebrow">{children}</span>;
-}
+/* ────────────────────────────────────────────────────────────────────────
+   Static content
+   ──────────────────────────────────────────────────────────────────── */
+const FEATURES = [
+  { icon: IconNetwork, title: 'One network, every driver', body: "Every delivery entry point, gate code, and instruction any driver has ever learned is available to every other driver — instantly, not eventually." },
+  { icon: IconRoute, title: 'No more matching driver to run', body: "You no longer need to send a specific driver to a specific run. Any driver on the network can pick up any route." },
+  { icon: IconCapOff, title: 'Training costs, gone', body: 'If a driver can drive and knows what to do, that\'s enough — he already has the same knowledge as your most experienced trainer.' },
+  { icon: IconPhoneOff, title: 'Fewer calls to dispatch', body: "When a driver already knows what to do, he doesn't need to ring dispatch or the customer to find out." },
+  { icon: IconSmile, title: 'Happier drivers, happier customers', body: 'A driver who always knows where to go isn\'t frustrated by a bad delivery, and the customer gets a seamless one.' },
+  { icon: IconRefresh, title: 'Always current', body: 'Every week, we re-map your customer base and add or update instructions, so the network stays 100% accurate.' },
+];
 
-function FeatureCard({ icon, title, children }) {
-  return (
-    <TiltCard className="ls-feature-card">
-      <div className="ls-feature-icon">{icon}</div>
-      <h3>{title}</h3>
-      <p>{children}</p>
-    </TiltCard>
-  );
-}
+const STEPS = [
+  { title: 'We map your customers', body: 'We work with your drivers and sales reps to map every customer with complete, accurate delivery instructions.' },
+  { title: 'You run a free trial', body: "Hand a route only your best driver knows to someone unfamiliar with it — no cost, no commitment, no setup fee." },
+  { title: 'See it, then decide', body: 'Compare the results for yourself. If you like what you see, subscribe — if not, walk away, no strings attached.' },
+];
 
-function StepCard({ index, title, children }) {
-  return (
-    <div className="ls-step-card">
-      <span className="ls-step-index">{index}</span>
-      <h3>{title}</h3>
-      <p>{children}</p>
-    </div>
-  );
-}
-
-// ── ROI bar comparison — plain CSS widths, no chart library. Fills grow
-//    from zero the moment the panel enters view, instead of just appearing.
-function RoiBars({ reclaimedShare }) {
-  const [ref, visible] = useReveal(0.45);
-  const withoutWidth = 100;
-  const withWidth = Math.max(6, Math.round((1 - reclaimedShare) * 100 * 0.18));
-  // The "with CNS" bar is intentionally drawn far shorter than the raw
-  // percentage would imply — it represents residual friction, not total
-  // working time, so it reads as "nearly solved" rather than "18% left".
-
-  return (
-    <div ref={ref} className="ls-roi-bars" role="img" aria-label="Time lost to route friction, with and without CNS">
-      <div className="ls-roi-bar-row">
-        <span className="ls-roi-bar-label">Without CNS</span>
-        <div className="ls-roi-bar-track">
-          <div
-            className="ls-roi-bar-fill ls-roi-bar-fill--dark"
-            style={{ width: visible ? `${withoutWidth}%` : "0%" }}
-          />
-        </div>
-        <span className="ls-roi-bar-value">9,600 min / driver / mo</span>
-      </div>
-      <div className="ls-roi-bar-row">
-        <span className="ls-roi-bar-label">With CNS</span>
-        <div className="ls-roi-bar-track">
-          <div
-            className="ls-roi-bar-fill ls-roi-bar-fill--route"
-            style={{ width: visible ? `${withWidth}%` : "0%", transitionDelay: "0.3s" }}
-          />
-        </div>
-        <span className="ls-roi-bar-value">~{MINUTES_RECLAIMED_PER_MONTH} min reclaimed</span>
-      </div>
-    </div>
-  );
-}
-
-// ── LandingScreen ─────────────────────────────────────────────────────────
-export default function LandingScreen({ onLoginClick, onSignupClick, onTermsPress, onPrivacyPress }) {
-  const [unitPrice, setUnitPrice] = useState(null);
-  const [currency, setCurrency] = useState("usd");
+/* ────────────────────────────────────────────────────────────────────────
+   Page
+   ──────────────────────────────────────────────────────────────────── */
+export default function LandingScreen() {
+  const rootRef = useRef(null);
   const [scrolled, setScrolled] = useState(false);
   const [showFloatingCta, setShowFloatingCta] = useState(false);
-  const featuresRef = useRef(null);
-  const heroRef = useRef(null);
+
+  useScrollReveal(rootRef);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(API_ENDPOINTS.PAYMENT_PRICE_INFO);
-        const data = await res.json();
-        if (res.ok && typeof data.unitAmountDecimal === "number") {
-          setUnitPrice(data.unitAmountDecimal);
-          if (typeof data.currency === "string") setCurrency(data.currency);
-        }
-      } catch {
-        // silent — the page reads fine without a live price
-      }
-    })();
+    const onScroll = () => {
+      setScrolled(window.scrollY > 8);
+      setShowFloatingCta(window.scrollY > 620);
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+  const [minutesRef, minutesVal] = useCountUp(200, { duration: 1100 });
+  const [hoursRef, hoursVal] = useCountUp(3, { duration: 900 });
+  const [roiRef, roiVal] = useCountUp(10, { duration: 1300 });
 
-  // Floating "sign up" pill appears once the hero has scrolled out of view,
-  // so the CTA stays reachable without following the visitor everywhere.
-  useEffect(() => {
-    if (typeof IntersectionObserver === "undefined" || !heroRef.current) return;
-    const io = new IntersectionObserver(
-      ([entry]) => setShowFloatingCta(!entry.isIntersecting),
-      { threshold: 0 }
-    );
-    io.observe(heroRef.current);
-    return () => io.disconnect();
-  }, []);
-
-  const formatMoney = (amount) => {
-    try {
-      return new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: currency.toUpperCase(),
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(amount);
-    } catch {
-      return `${currency.toUpperCase()} ${amount.toFixed(2)}`;
-    }
+  const scrollTo = (id) => (e) => {
+    e.preventDefault();
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const reclaimedHours = MINUTES_RECLAIMED_PER_MONTH / 60;
-  const reclaimedValue = reclaimedHours * ASSUMED_HOURLY_WAGE;
-  const roiMultiplier = unitPrice && unitPrice > 0 ? (reclaimedValue / unitPrice) : null;
-
-  const scrollToFeatures = () => featuresRef.current?.scrollIntoView({ behavior: "smooth" });
-
   return (
-    <div className="ls-root">
+    <div className="ls-root" ref={rootRef}>
+      <div className="ls-aurora" aria-hidden="true" />
+
       {/* ── Nav ── */}
-      <header className={`ls-nav ${scrolled ? "ls-nav--scrolled" : ""}`}>
+      <nav className={`ls-nav ${scrolled ? 'ls-nav--scrolled' : ''}`}>
         <div className="ls-nav-inner">
           <div className="ls-wordmark">
-            <span className="ls-wordmark-dot" aria-hidden="true" />
+            <span className="ls-wordmark-dot" />
             CNS
           </div>
-          <nav className="ls-nav-links" aria-label="Primary">
-            <button className="ls-nav-link" onClick={scrollToFeatures}>Product</button>
-            <a className="ls-nav-link" href="#roi">ROI</a>
-            <a className="ls-nav-link" href="#pricing">Pricing</a>
-            <a className="ls-nav-link" href="#contact">Contact</a>
-          </nav>
-          <div className="ls-nav-actions">
-            <button className="ls-btn-ghost" onClick={onLoginClick}>Log in</button>
-            <button className="ls-btn-primary" onClick={onSignupClick}>
-              Sign up <ArrowUpRight size={15} strokeWidth={2.5} />
-            </button>
+          <div className="ls-nav-links">
+            <button className="ls-nav-link" onClick={scrollTo('how-it-works')}>How it works</button>
+            <button className="ls-nav-link" onClick={scrollTo('features')}>Features</button>
+            <button className="ls-nav-link" onClick={scrollTo('roi')}>ROI</button>
+            <button className="ls-nav-link" onClick={scrollTo('pricing')}>Pricing</button>
           </div>
-        </div>
-      </header>
-
-      {/* ── Hero ── */}
-      <section className="ls-hero" ref={heroRef}>
-        <div className="ls-hero-ambient" aria-hidden="true" />
-
-        <div className="ls-hero-copy">
-          <Reveal><SectionEyebrow>Delivery navigation, built for fleets</SectionEyebrow></Reveal>
-          <Reveal delay={80}>
-            <h1 className="ls-headline">
-              The last 100 meters,<br />
-              solved once, <span className="ls-headline-gradient">known by everyone.</span>
-            </h1>
-          </Reveal>
-          <Reveal delay={160}>
-            <p className="ls-subhead">
-              The map gets a driver to the address. CNS gets them to the actual
-              door &mdash; the loading dock, the side gate, the buzzer that
-              works. Once one driver learns a stop, every driver on your fleet
-              knows it too.
-            </p>
-          </Reveal>
-          <Reveal delay={240}>
-            <div className="ls-hero-actions">
-              <span className="ls-cta-pulse">
-                <button className="ls-btn-primary ls-btn-large" onClick={onSignupClick}>
-                  Try it free with one route
-                </button>
-              </span>
-              <button className="ls-btn-ghost ls-btn-large" onClick={scrollToFeatures}>
-                See how it works
-              </button>
-            </div>
-          </Reveal>
-          <Reveal delay={300}>
-            <p className="ls-hero-fineprint">
-              Run a real delivery with an experienced driver's knowledge before you pay for anything.
-            </p>
-          </Reveal>
-        </div>
-
-        <Reveal delay={200} className="ls-hero-visual">
-          <div className="ls-console">
-            <div className="ls-console-head">
-              <span className="ls-console-live">
-                <span className="ls-console-live-dot" aria-hidden="true" />
-                Always in sync
-              </span>
-              <span className="ls-console-label">Knowledge network</span>
-            </div>
-            <KnowledgeMap />
-            <span className="ls-console-caption">
-              One stop, learned once &mdash; instantly known fleet&#8209;wide.
+          <div className="ls-nav-actions">
+            <button className="ls-btn-ghost" onClick={scrollTo('contact')}>Talk to us</button>
+            <span className="ls-cta-pulse">
+              <button className="ls-btn-primary" onClick={scrollTo('trial')}>Start free trial</button>
             </span>
           </div>
-        </Reveal>
+        </div>
+      </nav>
+
+      {/* ── Hero ── */}
+      <section className="ls-hero">
+        <div className="ls-hero-ambient" aria-hidden="true" />
+        <div className="ls-hero-copy ls-reveal">
+          <span className="ls-eyebrow"><span className="ls-eyebrow-dot" />The last 100 metres, solved</span>
+          <h1 className="ls-headline">
+            Every driver knows <span className="ls-headline-gradient">every delivery.</span>
+          </h1>
+          <p className="ls-subhead">
+            CNS gives your whole fleet the collective knowledge of your most experienced driver —
+            entry points, gate codes, and instructions for every customer — so any driver can run
+            any route, from day one.
+          </p>
+          <div className="ls-hero-actions">
+            <span className="ls-cta-pulse">
+              <button className="ls-btn-primary ls-btn-large" onClick={scrollTo('trial')}>
+                Start your free trial <IconArrowRight />
+              </button>
+            </span>
+            <button className="ls-btn-ghost ls-btn-large" onClick={scrollTo('how-it-works')}>See how it works</button>
+          </div>
+          <p className="ls-hero-fineprint"><IconShieldSm /> No upfront cost. No commitment. Cancel anytime.</p>
+        </div>
+
+        <div className="ls-hero-visual ls-reveal ls-reveal--scale">
+          <div className="ls-console">
+            <div className="ls-console-head">
+              <span className="ls-console-live"><span className="ls-console-live-dot" />LIVE NETWORK</span>
+              <span className="ls-console-label">5 drivers · 1 hub</span>
+            </div>
+            <KnowledgeMap />
+            <span className="ls-console-caption">Every driver's knowledge, shared with every other driver — in real time.</span>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Trial ── */}
+      <section className="ls-trial" id="trial">
+        <div className="ls-trial-card ls-reveal">
+          <div className="ls-trial-copy">
+            <span className="ls-trial-tag">Free trial</span>
+            <h2>Try it before you trust it.</h2>
+            <p>
+              Give one of your experienced driver's runs to a driver who's never done it — with CNS.
+              See the difference for yourself. If you like what you see, subscribe. If you don't, you've lost nothing.
+            </p>
+            <span className="ls-cta-pulse">
+              <button className="ls-btn-primary" onClick={scrollTo('contact')}>Start my free trial <IconArrowRight /></button>
+            </span>
+          </div>
+          <div className="ls-trial-compare">
+            <div className="ls-trial-row">
+              <span className="ls-trial-avatar ls-trial-avatar--vet">JD</span>
+              <div className="ls-trial-row-body">
+                <div className="ls-trial-row-name">Experienced driver</div>
+                <div className="ls-trial-row-sub">Knows the run by heart</div>
+              </div>
+              <span className="ls-trial-row-badge ls-trial-row-badge--match">Baseline run</span>
+            </div>
+            <span className="ls-trial-vs">shares knowledge with →</span>
+            <div className="ls-trial-row">
+              <span className="ls-trial-avatar ls-trial-avatar--new">AK</span>
+              <div className="ls-trial-row-body">
+                <div className="ls-trial-row-name">New driver, same run</div>
+                <div className="ls-trial-row-sub">Never done this route before</div>
+              </div>
+              <span className="ls-trial-row-badge ls-trial-row-badge--match">On CNS</span>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* ── Features ── */}
-      <section className="ls-section" ref={featuresRef}>
-        <Reveal className="ls-section-head" as="div">
-          <SectionEyebrow>Why fleets switch</SectionEyebrow>
-          <h2>Every driver runs every route the same way.</h2>
-          <p className="ls-section-sub">
-            No more one driver who "knows the west side." With CNS, that
-            knowledge belongs to the fleet, not the person.
-          </p>
-        </Reveal>
+      <section className="ls-section ls-section--tint" id="features">
+        <div className="ls-section-head ls-reveal">
+          <h2>Built to remove the guesswork</h2>
+          <p className="ls-section-sub">Everything a driver needs to know, already known — before the run starts.</p>
+        </div>
         <div className="ls-feature-grid">
-          <Reveal delay={0}>
-            <FeatureCard icon={<Share2 size={20} strokeWidth={2} />} title="One shared map">
-              Every driver has access to the knowledge every other driver has
-              already earned. Assign any run to any driver and get the same result.
-            </FeatureCard>
-          </Reveal>
-          <Reveal delay={90}>
-            <FeatureCard icon={<GraduationCap size={20} strokeWidth={2} />} title="Training costs disappear">
-              A driver who can drive and can read doesn't need a ride-along to
-              learn a route &mdash; the instructions are already sitting in their hand.
-            </FeatureCard>
-          </Reveal>
-          <Reveal delay={180}>
-            <FeatureCard icon={<PhoneOff size={20} strokeWidth={2} />} title="Dispatch stops ringing">
-              When a driver already knows where to go, they stop calling in to
-              ask. Fewer interruptions, less back-and-forth, cleaner days.
-            </FeatureCard>
-          </Reveal>
-          <Reveal delay={270}>
-            <FeatureCard icon={<Smile size={20} strokeWidth={2} />} title="Customers feel it">
-              Deliveries land at the right door on the first try, every time. A
-              frustrated driver becomes a confident one, and it shows up on the doorstep.
-            </FeatureCard>
-          </Reveal>
+          {FEATURES.map(({ icon: Icon, title, body }, i) => (
+            <FeatureCard key={title} Icon={Icon} title={title} body={body} delay={i * 0.06} />
+          ))}
         </div>
       </section>
 
       {/* ── How it works ── */}
-      <section className="ls-section ls-section--tint">
-        <Reveal className="ls-section-head" as="div">
-          <SectionEyebrow>How it works</SectionEyebrow>
-          <h2>Three steps, then it runs itself.</h2>
-        </Reveal>
+      <section className="ls-section" id="how-it-works">
+        <div className="ls-section-head ls-reveal">
+          <h2>From first route to full rollout</h2>
+          <p className="ls-section-sub">Three steps, starting with a trial you can walk away from.</p>
+        </div>
         <div className="ls-step-grid">
-          <Reveal delay={0}>
-            <StepCard index="01" title="Run one route free">
-              We hand an unfamiliar driver the knowledge of your most experienced
-              one, on a real delivery. You watch the difference before you commit to anything.
-            </StepCard>
-          </Reveal>
-          <Reveal delay={110}>
-            <StepCard index="02" title="We map your customers">
-              Our team works with your drivers and sales reps to document every
-              stop once &mdash; the entrance, the gate code, the exact spot to park.
-            </StepCard>
-          </Reveal>
-          <Reveal delay={220}>
-            <StepCard index="03" title="Every driver, every route">
-              The map goes live for your whole fleet, and we resync it against
-              your customer list every week, so it's always accurate, never stale.
-            </StepCard>
-          </Reveal>
+          {STEPS.map((s, i) => (
+            <div className="ls-step-card ls-reveal" key={s.title} style={{ transitionDelay: `${i * 0.08}s` }}>
+              <span className="ls-step-index">{String(i + 1).padStart(2, '0')}</span>
+              <h3>{s.title}</h3>
+              <p>{s.body}</p>
+              {i < STEPS.length - 1 && <span className="ls-step-connector" aria-hidden="true" />}
+            </div>
+          ))}
         </div>
       </section>
 
       {/* ── ROI ── */}
-      <section className="ls-section" id="roi">
-        <Reveal className="ls-section-head" as="div">
-          <SectionEyebrow>Return on investment</SectionEyebrow>
-          <h2>The math, laid out plainly.</h2>
-          <p className="ls-section-sub">
-            A driver working an 8-hour day covers 480 minutes &mdash; 9,600 a
-            month. Every minute spent backtracking, calling dispatch, or
-            re-learning a stop someone else already knows is a minute that
-            didn't need to be spent.
-          </p>
-        </Reveal>
-
-        <Reveal className="ls-roi-panel" as="div">
-          <RoiBars reclaimedShare={MINUTES_RECLAIMED_PER_MONTH / 9600} />
-
-          <div className="ls-roi-stats">
-            <div className="ls-roi-stat">
-              <TrendingUp size={18} strokeWidth={2.2} />
-              <div>
-                <span className="ls-roi-stat-value">
-                  <CountUp value={MINUTES_RECLAIMED_PER_MONTH} formatter={(n) => `~${Math.round(n)} min`} />
-                </span>
-                <span className="ls-roi-stat-label">reclaimed / driver / month</span>
-              </div>
-            </div>
-            <div className="ls-roi-stat">
-              <TrendingUp size={18} strokeWidth={2.2} />
-              <div>
-                <span className="ls-roi-stat-value">
-                  <CountUp value={reclaimedValue} formatter={formatMoney} />
-                </span>
-                <span className="ls-roi-stat-label">value reclaimed, at ${ASSUMED_HOURLY_WAGE}/hr</span>
-              </div>
-            </div>
-            <div className="ls-roi-stat">
-              <TrendingUp size={18} strokeWidth={2.2} />
-              <div>
-                <span className="ls-roi-stat-value">
-                  {roiMultiplier
-                    ? <CountUp value={roiMultiplier} formatter={(n) => `${n.toFixed(1)}x`} />
-                    : "up to 10x"}
-                </span>
-                <span className="ls-roi-stat-label">return on your subscription cost</span>
-              </div>
-            </div>
+      <section className="ls-section ls-section--tint" id="roi">
+        <div className="ls-section-head ls-reveal">
+          <h2>The math behind the trial</h2>
+          <p className="ls-section-sub">Based on an 8-hour driver day — see what a shared knowledge network gives back.</p>
+        </div>
+        <div className="ls-roi-panel ls-reveal">
+          <div className="ls-roi-bars">
+            <RoiBar label="Monthly capacity" value="9,600 min / driver" widthTarget={100} variant="dark" sub="480 min/day × 5 days × 4 weeks" />
+            <RoiBar label="Time reclaimed" value="~200 min / driver" widthTarget={9} variant="route" sub="from shared knowledge alone" />
           </div>
-        </Reveal>
-        <p className="ls-roi-footnote">
-          Figures are an illustrative example based on an 8-hour driver day
-          and a {formatMoney(ASSUMED_HOURLY_WAGE)}/hr wage &mdash; your own numbers will vary with route density and fleet size.
-        </p>
+          <div className="ls-roi-stats">
+            <RoiStat icon={<IconClock />} valueRef={minutesRef} value={minutesVal} suffix=" min" label="reclaimed per driver, every month" />
+            <RoiStat icon={<IconClockSm />} valueRef={hoursRef} value={hoursVal} suffix=" hrs" label="of driver time, back in the schedule" />
+            <RoiStat icon={<IconTrend />} valueRef={roiRef} value={roiVal} suffix="x" prefix="up to " label="return on investment" />
+          </div>
+          <p className="ls-roi-footnote">
+            A driver working an 8-hour day covers about 9,600 minutes a month. A shared knowledge network that keeps every
+            customer's instructions current reclaims an estimated 200 of those minutes — before counting the training costs
+            it removes entirely. That's up to a 10x return on investment.
+          </p>
+        </div>
       </section>
 
       {/* ── Pricing ── */}
-      <section className="ls-section ls-section--tint" id="pricing">
-        <Reveal className="ls-section-head" as="div">
-          <SectionEyebrow>Pricing</SectionEyebrow>
-          <h2>One price. No surprises.</h2>
-        </Reveal>
-        <Reveal className="ls-pricing-card" as="div">
+      <section className="ls-section" id="pricing">
+        <div className="ls-section-head ls-reveal">
+          <h2>Simple, honest pricing</h2>
+          <p className="ls-section-sub">No implementation charges. No upfront costs. No hidden fees.</p>
+        </div>
+        <div className="ls-pricing-card ls-reveal ls-reveal--scale">
+          <span className="ls-pricing-badge">Per driver, per month</span>
           <div className="ls-pricing-price">
-            {unitPrice !== null ? (
-              <>
-                <span className="ls-pricing-amount">{formatMoney(unitPrice)}</span>
-                <span className="ls-pricing-period">/ driver / month</span>
-              </>
-            ) : (
-              <span className="ls-pricing-amount ls-pricing-amount--loading">Loading pricing&hellip;</span>
-            )}
+            <span className="ls-pricing-amount">$0.00</span>
+            <span className="ls-pricing-period">/ driver / month</span>
           </div>
           <ul className="ls-pricing-list">
-            <li><CheckCircle2 size={16} strokeWidth={2.4} /> No implementation charges</li>
-            <li><CheckCircle2 size={16} strokeWidth={2.4} /> No upfront costs, no hidden fees</li>
-            <li><CheckCircle2 size={16} strokeWidth={2.4} /> No contracts &mdash; cancel anytime</li>
-            <li><CheckCircle2 size={16} strokeWidth={2.4} /> Free trial run before you subscribe</li>
+            <li><IconCheck /> No implementation charges</li>
+            <li><IconCheck /> No upfront costs or hidden fees</li>
+            <li><IconCheck /> Every driver, every route, always on</li>
+            <li><IconCheck /> Customer knowledge refreshed weekly</li>
           </ul>
-          <button className="ls-btn-primary ls-btn-large" onClick={onSignupClick}>
-            Get your fleet started
-          </button>
-        </Reveal>
+          <span className="ls-cta-pulse" style={{ width: '100%' }}>
+            <button className="ls-btn-primary" onClick={scrollTo('contact')}>Start free trial <IconArrowRight /></button>
+          </span>
+          <p className="ls-pricing-fineprint">No credit card required to trial.</p>
+        </div>
       </section>
 
       {/* ── Contact ── */}
       <section className="ls-contact" id="contact">
-        <Reveal className="ls-contact-inner" as="div">
-          <h2>Want to see it on your own routes?</h2>
-          <p>Tell us about your fleet and we'll set up a free trial run on one of your real deliveries.</p>
+        <div className="ls-contact-glow" aria-hidden="true" />
+        <div className="ls-contact-inner ls-reveal">
+          <h2>Ready to see it for yourself?</h2>
+          <p>Give one route to one driver who's never run it. We'll handle the rest — free, with no commitment.</p>
           <div className="ls-contact-actions">
-            <a className="ls-btn-ghost ls-btn-large ls-btn-on-dark" href={`mailto:${CONTACT_EMAIL}`}>
-              <Mail size={16} strokeWidth={2.2} /> {CONTACT_EMAIL}
-            </a>
-            <button className="ls-btn-primary ls-btn-large" onClick={onSignupClick}>
-              Sign up
-            </button>
+            <span className="ls-cta-pulse">
+              <button className="ls-btn-primary ls-btn-large">Start free trial <IconArrowRight /></button>
+            </span>
+            <button className="ls-btn-ghost ls-btn-large ls-btn-on-dark">Talk to us</button>
           </div>
-        </Reveal>
+        </div>
       </section>
 
       {/* ── Footer ── */}
@@ -561,26 +436,78 @@ export default function LandingScreen({ onLoginClick, onSignupClick, onTermsPres
         <div className="ls-footer-inner">
           <div className="ls-footer-brand">
             <div className="ls-wordmark">
-              <span className="ls-wordmark-dot" aria-hidden="true" />
+              <span className="ls-wordmark-dot" />
               CNS
             </div>
-            <p><MapPin size={13} strokeWidth={2} /> Built by couriers, for couriers.</p>
+            <p>Courier Navigator System — solving the last 100 metres.</p>
           </div>
-          <nav className="ls-footer-legal" aria-label="Legal">
-            <button className="ls-footer-legal-link" onClick={onTermsPress}>Terms of Service</button>
-            <span className="ls-footer-dot" aria-hidden="true" />
-            <button className="ls-footer-legal-link" onClick={onPrivacyPress}>Privacy Policy</button>
-          </nav>
+          <div className="ls-footer-legal">
+            <button className="ls-footer-legal-link">Privacy</button>
+            <span className="ls-footer-dot" />
+            <button className="ls-footer-legal-link">Terms</button>
+          </div>
         </div>
       </footer>
 
-      {/* ── Floating CTA ── */}
-      <button
-        className={`ls-floating-cta ${showFloatingCta ? "is-visible" : ""}`}
-        onClick={onSignupClick}
-      >
-        Start your free trial <ArrowUpRight size={15} strokeWidth={2.5} />
+      <button className={`ls-floating-cta ${showFloatingCta ? 'is-visible' : ''}`} onClick={scrollTo('trial')}>
+        Start free trial <IconArrowRight size={14} />
       </button>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Small pieces
+   ──────────────────────────────────────────────────────────────────── */
+function FeatureCard({ Icon, title, body, delay }) {
+  const { ref, onMouseMove, onMouseLeave } = useTilt(5);
+  return (
+    <div className="ls-tilt ls-reveal" ref={ref} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave} style={{ transitionDelay: `${delay}s` }}>
+      <div className="ls-feature-card">
+        <div className="ls-feature-icon"><Icon /></div>
+        <h3>{title}</h3>
+        <p>{body}</p>
+      </div>
+    </div>
+  );
+}
+
+function RoiBar({ label, value, widthTarget, variant, sub }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          el.style.width = `${widthTarget}%`;
+          io.unobserve(el);
+        }
+      });
+    }, { threshold: 0.3 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [widthTarget]);
+
+  return (
+    <div className="ls-roi-bar-row">
+      <span className="ls-roi-bar-label">{label}</span>
+      <span className="ls-roi-bar-track">
+        <span ref={ref} className={`ls-roi-bar-fill ls-roi-bar-fill--${variant}`} />
+      </span>
+      <span className="ls-roi-bar-value">{value}<br />{sub}</span>
+    </div>
+  );
+}
+
+function RoiStat({ icon, valueRef, value, suffix = '', prefix = '', label }) {
+  return (
+    <div className="ls-roi-stat" ref={valueRef}>
+      <span className="ls-roi-stat-icon">{icon}</span>
+      <div className="ls-roi-stat-text">
+        <span className="ls-roi-stat-value">{prefix}{value}{suffix}</span>
+        <span className="ls-roi-stat-label">{label}</span>
+      </div>
     </div>
   );
 }
