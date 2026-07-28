@@ -485,26 +485,25 @@ export default function LandingScreen({ onLoginClick, onSignupClick, onTermsPres
       {/* ── ROI ── */}
       <section className="ls-section ls-section--tint" id="roi">
         <div className="ls-section-head ls-reveal">
-          <h2>The math behind the trial</h2>
-          <p className="ls-section-sub">Based on an 8-hour driver day — see what a shared knowledge network gives back.</p>
+          <h2>Small per-driver savings, real fleet-wide value</h2>
+          <p className="ls-section-sub">200 minutes a driver doesn't sound like much — until you multiply it across your team, every month.</p>
         </div>
         <div className="ls-roi-panel ls-reveal">
-          <div className="ls-roi-bars">
-            <RoiBar label="Monthly capacity" value="9,600 min / driver" widthTarget={100} variant="dark" sub="480 min/day × 5 days × 4 weeks" />
-            <RoiBar label="Time reclaimed" value="~200 min / driver" widthTarget={2.1} variant="route" sub="≈2.1% of monthly capacity" />
-          </div>
           <div className="ls-roi-stats">
             <RoiStat icon={<IconClock />} target={200} duration={1200} label="reclaimed per driver, every month" suffix=" min" />
             <RoiStat icon={<IconClockSm />} target={3.3} decimals={1} duration={1300} label="of driver time, back in the schedule" suffix=" hrs" />
             <RoiStat icon={<IconTrend />} target={10} duration={1450} label="return on investment" prefix="up to " suffix="x" />
           </div>
+          <RoiCalculator />
           <p className="ls-roi-footnote">
             A driver working an 8-hour day covers about 9,600 minutes a month. A shared knowledge network that keeps every
-            customer's instructions current reclaims an estimated 200 of those minutes — before counting the training costs
-            it removes entirely. That's up to a 10x return on investment.
+            customer's instructions current reclaims an estimated 200 of those minutes per driver — before counting the
+            training costs it removes entirely, since a new driver already has the same knowledge as your most experienced
+            one. Across a whole fleet, that adds up fast.
           </p>
         </div>
       </section>
+
 
       {/* ── Pricing ── */}
       <section className="ls-section" id="pricing">
@@ -602,63 +601,76 @@ function FeatureCard({ Icon, title, body, delay }) {
   );
 }
 
-function RoiBar({ label, value, widthTarget, variant, sub }) {
-  // Two refs on purpose: the fill span starts at width:0, and an
-  // IntersectionObserver watching a zero-area element never reliably
-  // crosses a visibility threshold (its intersection ratio has nothing to
-  // divide by) — that's why the bars weren't filling at all. Watching the
-  // *track* instead (which always has real width/height) and animating the
-  // fill inside it separately fixes that for good.
-  const trackRef = useRef(null);
-  const fillRef = useRef(null);
+/**
+ * A single driver's 200 reclaimed minutes reads as small next to a 9,600
+ * minute month — which was the whole problem with the old bar chart. This
+ * makes the same number land differently: multiply it across the person's
+ * actual fleet size and show the combined hours and dollar value, which is
+ * how the savings actually show up in practice. Self-contained state (like
+ * RoiStat) so dragging the slider only re-renders this small component.
+ */
+function RoiCalculator() {
+  const MINUTES_PER_DRIVER = 200;
+  const ASSUMED_HOURLY_RATE = 30; // stated explicitly in the footnote below
 
-  useEffect(() => {
-    const track = trackRef.current;
-    const fill = fillRef.current;
-    if (!track || !fill) return;
+  const [drivers, setDrivers] = useState(12);
 
-    let done = false;
-    const runFill = () => {
-      if (done) return;
-      done = true;
-      requestAnimationFrame(() => { fill.style.width = `${widthTarget}%`; });
-    };
+  const totalMinutes = drivers * MINUTES_PER_DRIVER;
+  const totalHours = totalMinutes / 60;
+  const monthlyValue = totalHours * ASSUMED_HOURLY_RATE;
+  const annualValue = monthlyValue * 12;
 
-    if (typeof IntersectionObserver === 'undefined') {
-      // No IO support — just fill it rather than leaving it stuck at 0.
-      runFill();
-      return;
-    }
+  const formatUSD = (n) =>
+    n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 
-    const io = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          runFill();
-          io.unobserve(track);
-        }
-      });
-    }, { threshold: 0.2 });
-    io.observe(track);
-
-    // Safety net: if for any reason the observer never fires (e.g. the
-    // panel is already fully in view before the observer attaches on some
-    // browsers), fill it anyway after a short delay instead of leaving an
-    // empty bar forever.
-    const fallback = window.setTimeout(runFill, 900);
-
-    return () => { io.disconnect(); window.clearTimeout(fallback); };
-  }, [widthTarget]);
+  const trackPercent = ((drivers - 1) / 99) * 100;
 
   return (
-    <div className="ls-roi-bar-row">
-      <span className="ls-roi-bar-label">{label}</span>
-      <span className="ls-roi-bar-track" ref={trackRef}>
-        <span ref={fillRef} className={`ls-roi-bar-fill ls-roi-bar-fill--${variant}`} />
-      </span>
-      <span className="ls-roi-bar-value">{value}<br />{sub}</span>
+    <div className="ls-roi-calc">
+      <div className="ls-roi-calc-head">
+        <span className="ls-roi-calc-eyebrow">See it across your fleet</span>
+        <div className="ls-roi-calc-slider-row">
+          <input
+            type="range"
+            min="1"
+            max="100"
+            value={drivers}
+            onChange={(e) => setDrivers(Number(e.target.value))}
+            className="ls-roi-calc-slider"
+            style={{ '--fill': `${trackPercent}%` }}
+            aria-label="Number of drivers"
+          />
+          <span className="ls-roi-calc-count">
+            <strong>{drivers}</strong> driver{drivers === 1 ? '' : 's'}
+          </span>
+        </div>
+      </div>
+
+      <div className="ls-roi-calc-results">
+        <div className="ls-roi-calc-cell">
+          <span className="ls-roi-calc-value">{totalHours.toFixed(0)} hrs</span>
+          <span className="ls-roi-calc-label">reclaimed, every month</span>
+        </div>
+        <IconArrowRight className="ls-roi-calc-arrow" />
+        <div className="ls-roi-calc-cell ls-roi-calc-cell--highlight">
+          <span className="ls-roi-calc-value">{formatUSD(monthlyValue)}</span>
+          <span className="ls-roi-calc-label">value returned, monthly</span>
+        </div>
+        <IconArrowRight className="ls-roi-calc-arrow" />
+        <div className="ls-roi-calc-cell">
+          <span className="ls-roi-calc-value">{formatUSD(annualValue)}</span>
+          <span className="ls-roi-calc-label">projected, per year</span>
+        </div>
+      </div>
+
+      <p className="ls-roi-calc-footnote">
+        Based on ~200 minutes reclaimed per driver monthly and an average driver wage of ${ASSUMED_HOURLY_RATE}/hr —
+        and that's before counting the training costs CNS removes entirely.
+      </p>
     </div>
   );
 }
+
 
 /**
  * Self-contained stat: owns its own count-up animation and its own

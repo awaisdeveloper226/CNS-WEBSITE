@@ -279,25 +279,7 @@
 
 /* ── ROI ── */
 .ls-roi-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 36px; display: flex; flex-direction: column; gap: 32px; }
-.ls-roi-bars { display: flex; flex-direction: column; gap: 18px; }
-.ls-roi-bar-row { display: grid; grid-template-columns: 160px 1fr 170px; align-items: center; gap: 14px; }
-.ls-roi-bar-label { font-size: 13.5px; font-weight: 600; color: var(--ink); }
-.ls-roi-bar-track { display: block; height: 12px; border-radius: 100px; background: var(--paper); overflow: hidden; box-shadow: inset 0 1px 2px rgba(19, 27, 46, 0.06); }
-/* Duration/easing now matches the JS count-up's quintic ease-out (--ease-soft,
-   ~1.3s) so the bar and its adjacent number finish landing at the same
-   moment instead of visibly drifting apart. A small min-width keeps low
-   percentages (like the ~2% "time reclaimed" bar) visible as a sliver
-   instead of vanishing to nothing. */
-.ls-roi-bar-fill { display: block; position: relative; height: 100%; border-radius: 100px; width: 0%; min-width: 3px; transition: width 1.3s var(--ease-soft); overflow: hidden; }
-.ls-roi-bar-fill--dark { background: var(--ink); opacity: 0.78; }
-.ls-roi-bar-fill--route { background: linear-gradient(90deg, var(--route), var(--route-glow)); box-shadow: 0 0 10px rgba(125, 160, 255, 0.55); }
-.ls-roi-bar-fill::after {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(100deg, transparent, rgba(255,255,255,0.5), transparent);
-  transform: translateX(-100%); animation: ls-bar-sheen 2.6s ease-in-out infinite;
-}
-.ls-roi-bar-value { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--slate); text-align: right; white-space: nowrap; }
-.ls-roi-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; border-top: 1px solid var(--line); padding-top: 30px; }
+.ls-roi-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
 .ls-roi-stat { display: flex; align-items: flex-start; gap: 12px; color: var(--route); transition: transform 0.2s var(--ease-out); }
 .ls-roi-stat:hover { transform: translateY(-2px); }
 .ls-roi-stat-icon { width: 34px; height: 34px; border-radius: 10px; background: var(--route-soft); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -305,6 +287,45 @@
 .ls-roi-stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
 .ls-roi-stat-label { font-size: 12.5px; color: var(--slate); }
 .ls-roi-footnote { font-size: 12.5px; line-height: 1.6; color: var(--slate); text-align: center; max-width: 640px; margin: 4px auto 0; }
+
+/* ── ROI fleet-value calculator ──
+   Replaces the old "reclaimed minutes as a sliver of the monthly total" bar
+   chart, which visually undersold the savings. Multiplying the same 200
+   min/driver number across an actual fleet size — and translating it into a
+   dollar figure — makes a small per-driver number read as the real,
+   compounding value it represents. */
+.ls-roi-calc { border-top: 1px solid var(--line); padding-top: 30px; display: flex; flex-direction: column; gap: 22px; }
+.ls-roi-calc-head { display: flex; flex-direction: column; gap: 12px; }
+.ls-roi-calc-eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; color: var(--slate); }
+.ls-roi-calc-slider-row { display: flex; align-items: center; gap: 16px; }
+.ls-roi-calc-count { flex-shrink: 0; min-width: 92px; font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.ls-roi-calc-count strong { font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 700; }
+
+.ls-roi-calc-slider {
+  --fill: 11%;
+  flex: 1; appearance: none; -webkit-appearance: none; height: 6px; border-radius: 100px; outline: none;
+  background: linear-gradient(90deg, var(--route) 0%, var(--route-glow) var(--fill), var(--line) var(--fill), var(--line) 100%);
+  transition: background 0.05s linear;
+}
+.ls-roi-calc-slider::-webkit-slider-thumb {
+  appearance: none; -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--surface); border: 3px solid var(--route); box-shadow: 0 2px 8px rgba(19, 27, 46, 0.25);
+  cursor: pointer; transition: transform 0.15s var(--ease-spring);
+}
+.ls-roi-calc-slider::-webkit-slider-thumb:hover { transform: scale(1.15); }
+.ls-roi-calc-slider::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%; background: var(--surface); border: 3px solid var(--route);
+  box-shadow: 0 2px 8px rgba(19, 27, 46, 0.25); cursor: pointer;
+}
+.ls-roi-calc-slider::-moz-range-track { height: 6px; border-radius: 100px; background: transparent; }
+
+.ls-roi-calc-results { display: flex; align-items: center; justify-content: center; gap: 18px; flex-wrap: wrap; background: var(--paper); border-radius: 14px; padding: 22px; }
+.ls-roi-calc-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 128px; }
+.ls-roi-calc-value { font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; transition: color 0.2s; }
+.ls-roi-calc-cell--highlight .ls-roi-calc-value { color: var(--route); }
+.ls-roi-calc-label { font-size: 12px; color: var(--slate); }
+.ls-roi-calc-arrow { color: var(--line); flex-shrink: 0; }
+.ls-roi-calc-footnote { font-size: 12px; line-height: 1.55; color: var(--slate); text-align: center; margin: 0; }
 
 /* ── Pricing ── */
 .ls-pricing-card { max-width: 440px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 36px; text-align: center; position: relative; overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s; }
@@ -368,7 +389,6 @@
 @keyframes ls-marquee-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 @keyframes ls-ripple-anim { to { transform: scale(2.6); opacity: 0; } }
 @keyframes ls-dash-flow { to { background-position: -16px 0; } }
-@keyframes ls-bar-sheen { 0% { transform: translateX(-100%); } 50%, 100% { transform: translateX(220%); } }
 
 /* ── Responsive ── */
 @media (max-width: 980px) {
@@ -387,8 +407,8 @@
   .ls-nav-links { display: none; }
   .ls-headline { font-size: 32px; }
   .ls-feature-grid { grid-template-columns: minmax(0, 1fr); }
-  .ls-roi-bar-row { grid-template-columns: 1fr; gap: 6px; text-align: left; }
-  .ls-roi-bar-value { text-align: left; }
+  .ls-roi-calc-results { flex-direction: column; }
+  .ls-roi-calc-arrow { transform: rotate(90deg); }
   .ls-footer-inner { flex-direction: column; align-items: flex-start; }
   .ls-floating-cta { right: 14px; bottom: 14px; padding: 11px 16px; font-size: 13px; }
   .ls-trial-card { padding: 26px; }
@@ -401,13 +421,12 @@
   .ls-wordmark-dot, .ls-console-live-dot, .ls-km-hub-ring, .ls-km-line, .ls-km-pulse,
   .ls-km-node circle:first-child, .ls-km-node-dot, .ls-headline-gradient, .ls-hero-ambient,
   .ls-cta-pulse::after, .ls-floating-cta, .ls-console, .ls-aurora::before, .ls-aurora::after,
-  .ls-eyebrow-dot, .ls-floater, .ls-marquee-track, .ls-progress, .ls-step-connector,
-  .ls-roi-bar-fill::after {
+  .ls-eyebrow-dot, .ls-floater, .ls-marquee-track, .ls-progress, .ls-step-connector {
     animation: none !important;
   }
   .ls-km-line, .ls-km-node circle:first-child, .ls-km-node-dot { opacity: 0.85; }
   .ls-km-pulse { opacity: 0; }
-  .ls-feature-card, .ls-btn-primary, .ls-btn-ghost, .ls-roi-bar-fill,
+  .ls-feature-card, .ls-btn-primary, .ls-btn-ghost,
   .ls-pricing-card, .ls-step-card, .ls-tilt, .ls-trial-row, .ls-magnetic {
     transition: none;
   }
