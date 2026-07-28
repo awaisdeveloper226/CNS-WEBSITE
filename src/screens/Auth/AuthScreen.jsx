@@ -4,7 +4,7 @@ import { useAuthContext } from "../../context/AuthContext";
 import { API_ENDPOINTS } from "../../constants/network";
 import "./AuthScreen.css";
 
-export default function AuthScreen() {
+export default function AuthScreen({ onBackToHome }) {
   const {
     login, forgotPassword, resetPassword, startCheckout,
     isLoading, error, mode, setMode, otpSent, otpContext, resetEmail,
@@ -346,6 +346,16 @@ export default function AuthScreen() {
   return (
     <div className="auth-root">
       <div className="auth-inner">
+        {/* Only shown when a caller (the marketing home page) wants a way
+            back — the OTP/forgot flows already have their own back button,
+            and standalone deep-links into /login won't pass this prop. */}
+        {onBackToHome && (mode === "login" || mode === "register") && (
+          <button className="auth-back-btn auth-back-home-btn" onClick={onBackToHome}>
+            <ArrowLeft size={18} color="#2563eb" />
+            <span>Back to CNS home</span>
+          </button>
+        )}
+
         <div className="auth-header">
           <img src="/icon.png" alt="CNS" width={100} height={100} />
           <h1 className="auth-app-title">CNS</h1>

@@ -5,6 +5,7 @@ import { pushBackLevel, popBackLevelSilently } from "./utils/backNav";
 
 import NavBar from "./components/Navbar/Navbar";
 import HomeScreen from "./screens/Home/HomeScreen";
+import LandingScreen from "./screens/Landing/LandingScreen";
 import AuthScreen from "./screens/Auth/AuthScreen";
 import ProfileScreen from "./screens/Profile/ProfileScreen";
 import SearchScreen from "./screens/Search/SearchScreen";
@@ -106,9 +107,19 @@ function getInitialTabFromHash() {
   return "home";
 }
 
+// ── Resolve the initial pre-login "page" from the URL hash. A visitor who
+//    lands directly on #/login or #/signup (e.g. from an ad or an email)
+//    should hit the auth form immediately instead of the marketing page —
+//    everyone else starts on the marketing page.
+function getInitialPublicViewFromHash() {
+  const hash = window.location.hash;
+  if (hash.startsWith("#/login") || hash.startsWith("#/signup")) return "auth";
+  return "landing";
+}
+
 // ── Inner app — needs AuthContext ─────────────────────────────────────────────
 function AppInner() {
-  const { user, isLoading, setSession, completePaymentReturn } = useAuthContext();
+  const { user, isLoading, setSession, setMode, completePaymentReturn } = useAuthContext();
   const isGuestUser = !!user?.isGuest;
 
   const [tab, setTab]                           = useState(getInitialTabFromHash);
@@ -118,6 +129,20 @@ function AppInner() {
   const [selectedInstruction, setSelectedInstruction] = useState(null); // { instructionId, businessId }
   const [guestShowExit, setGuestShowExit]       = useState(false);
   const homeScrollOffsetRef = useRef(0);
+
+  // ── Pre-login "page": the marketing home, or the auth form. Only ever
+  //    read while `!user` — irrelevant once someone's signed in.
+  const [publicView, setPublicView] = useState(getInitialPublicViewFromHash);
+
+  const goToLogin = () => {
+    setMode("login");
+    setPublicView("auth");
+  };
+  const goToSignup = () => {
+    setMode("register");
+    setPublicView("auth");
+  };
+  const goToLandingHome = () => setPublicView("landing");
 
   // ── bfcache recovery ──────────────────────────────────────────────────────
   // Stripe Checkout is a full page navigation away (window.location.href),
@@ -152,9 +177,29 @@ function AppInner() {
   // page -> map modal open -> (back) -> business page -> (back) -> home.
   const awayFromRootPushedRef = useRef(false);
   const instructionLevelPushedRef = useRef(false);
+  // Same idea, scoped to the pre-login marketing page: clicking Login/Sign
+  // up moves to the auth form, and browser Back should return to the
+  // marketing page rather than leaving the site entirely.
+  const awayFromPublicRootPushedRef = useRef(false);
 
   useEffect(() => {
-    if (isLoading || !user) return;
+    if (isLoading) return;
+
+    // Signed-out visitors: only the landing <-> auth back-level applies.
+    if (!user) {
+      const isAway = publicView === "auth";
+      if (isAway && !awayFromPublicRootPushedRef.current) {
+        awayFromPublicRootPushedRef.current = true;
+        pushBackLevel(() => {
+          awayFromPublicRootPushedRef.current = false;
+          setPublicView("landing");
+        });
+      } else if (!isAway && awayFromPublicRootPushedRef.current) {
+        awayFromPublicRootPushedRef.current = false;
+        popBackLevelSilently();
+      }
+      return;
+    }
 
     if (isGuestUser) {
       // Guests have no "home" — their one business is the root.
@@ -207,7 +252,7 @@ function AppInner() {
       instructionLevelPushedRef.current = false;
       popBackLevelSilently();
     }
-  }, [isLoading, user, isGuestUser, tab, selectedBusiness, showUploadFlow, selectedInstruction, guestShowExit]);
+  }, [isLoading, user, isGuestUser, tab, selectedBusiness, showUploadFlow, selectedInstruction, guestShowExit, publicView]);
 
   // ── Share-link state ─────────────────────────────────────────────────────
   // status: 'idle' | 'loading' | 'ready' | 'done' | 'error'
@@ -237,6 +282,7 @@ function AppInner() {
     paymentReturnHandled.current = true;
 
     completePaymentReturn();
+    setPublicView("auth"); // land straight on the OTP/"set your password" form, not the marketing page
     clearShareHash(); // reuses the same hash-clearing helper, name aside
   }, [completePaymentReturn]);
 
@@ -334,6 +380,9 @@ function AppInner() {
     setShowUploadFlow(false);
     setSelectedInstruction(null);
     setGuestShowExit(false);
+    // A logout (or a first load with nobody signed in) should land back on
+    // the marketing page, not mid-way through a stale auth form.
+    if (!currentUserId) setPublicView("landing");
   }, [user, isLoading, shareStatus]);
 
   // 3) If the visitor is NOT logged in, silently sign them in as a guest
@@ -465,7 +514,20 @@ function AppInner() {
   }
 
   // ── Not logged in (and no share link in play) ──────────────────────────────
-  if (!user) return <AuthScreen />;
+  // Marketing home first; Login / Sign up in its navbar hand off to the auth
+  // form below. Direct #/login or #/signup links skip straight to it.
+  if (!user) {
+    return publicView === "auth"
+      ? <AuthScreen onBackToHome={goToLandingHome} />
+      : (
+        <LandingScreen
+          onLoginClick={goToLogin}
+          onSignupClick={goToSignup}
+          onTermsPress={handleTermsPress}
+          onPrivacyPress={handlePrivacyPress}
+        />
+      );
+  }
 
   // ── Guest (share-link) sessions get a locked-down experience: only their
   //    claimed business, its instructions, and nothing else — no navbar,
