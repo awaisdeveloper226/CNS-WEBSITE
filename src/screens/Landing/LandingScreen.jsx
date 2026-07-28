@@ -72,6 +72,12 @@ const IconShield = (p) => (
     <path d="M9 12l2 2 4-4" />
   </svg>
 );
+const IconPin = (p) => (
+  <svg {...iconProps} width={p.size || 22} height={p.size || 22}>
+    <path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21Z" />
+    <circle cx="12" cy="9.5" r="2.3" />
+  </svg>
+);
 const IconShieldSm = (p) => <IconShield size={16} {...p} />;
 const IconClockSm = (p) => <IconClock size={16} {...p} />;
 
@@ -134,7 +140,7 @@ function useCountUp(target, { duration = 1200, decimals = 0 } = {}) {
   return [ref, value];
 }
 
-/** Subtle perspective tilt on a card, following the cursor. */
+/** Subtle perspective tilt + cursor-glow position on a card, following the cursor. */
 function useTilt(maxDeg = 6) {
   const ref = useRef(null);
   const onMouseMove = useCallback((e) => {
@@ -145,6 +151,8 @@ function useTilt(maxDeg = 6) {
     const py = (e.clientY - rect.top) / rect.height - 0.5;
     el.style.setProperty('--tiltY', `${(px * maxDeg * 2).toFixed(2)}deg`);
     el.style.setProperty('--tiltX', `${(-py * maxDeg * 2).toFixed(2)}deg`);
+    el.style.setProperty('--mx', `${((px + 0.5) * 100).toFixed(1)}%`);
+    el.style.setProperty('--my', `${((py + 0.5) * 100).toFixed(1)}%`);
   }, [maxDeg]);
   const onMouseLeave = useCallback(() => {
     const el = ref.current;
@@ -154,6 +162,41 @@ function useTilt(maxDeg = 6) {
   }, []);
   return { ref, onMouseMove, onMouseLeave };
 }
+
+/** Pulls a wrapped CTA gently toward the cursor while hovered. */
+function useMagnetic(strength = 16) {
+  const ref = useRef(null);
+  const onMouseMove = useCallback((e) => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = (e.clientX - rect.left - rect.width / 2) / rect.width;
+    const y = (e.clientY - rect.top - rect.height / 2) / rect.height;
+    el.style.transform = `translate(${(x * strength).toFixed(1)}px, ${(y * strength).toFixed(1)}px)`;
+  }, [strength]);
+  const onMouseLeave = useCallback(() => {
+    const el = ref.current;
+    if (el) el.style.transform = 'translate(0px, 0px)';
+  }, []);
+  return { ref, onMouseMove, onMouseLeave };
+}
+
+/** Spawns a short-lived ripple span at the click point inside the target button. */
+function spawnRipple(e) {
+  const btn = e.currentTarget;
+  if (!btn || typeof document === 'undefined') return;
+  const rect = btn.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height);
+  const span = document.createElement('span');
+  span.className = 'ls-ripple';
+  span.style.width = `${size}px`;
+  span.style.height = `${size}px`;
+  span.style.left = `${e.clientX - rect.left - size / 2}px`;
+  span.style.top = `${e.clientY - rect.top - size / 2}px`;
+  btn.appendChild(span);
+  window.setTimeout(() => span.remove(), 650);
+}
+const withRipple = (fn) => (e) => { spawnRipple(e); if (fn) fn(e); };
 
 /* ────────────────────────────────────────────────────────────────────────
    Hero visual — an animated "knowledge network": one hub, every driver
@@ -209,13 +252,27 @@ const STEPS = [
   { title: 'See it, then decide', body: 'Compare the results for yourself. If you like what you see, subscribe — if not, walk away, no strings attached.' },
 ];
 
+const MARQUEE_ITEMS = [
+  'Zero training costs', 'Every driver, every route', 'No calls to dispatch',
+  'Always up to date', 'Happier drivers', 'Seamless deliveries', 'Free to trial',
+];
+
+const FLOATERS = [
+  { top: '8%', left: '4%', size: 22, dur: '7.5s', delay: '0s' },
+  { top: '68%', left: '2%', size: 16, dur: '6s', delay: '1.2s' },
+  { top: '18%', left: '92%', size: 18, dur: '8s', delay: '0.6s' },
+  { top: '78%', left: '90%', size: 22, dur: '6.8s', delay: '2s' },
+];
+
 /* ────────────────────────────────────────────────────────────────────────
    Page
    ──────────────────────────────────────────────────────────────────── */
 export default function LandingScreen() {
   const rootRef = useRef(null);
+  const heroRef = useRef(null);
   const [scrolled, setScrolled] = useState(false);
   const [showFloatingCta, setShowFloatingCta] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   useScrollReveal(rootRef);
 
@@ -223,10 +280,21 @@ export default function LandingScreen() {
     const onScroll = () => {
       setScrolled(window.scrollY > 8);
       setShowFloatingCta(window.scrollY > 620);
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      setProgress(max > 0 ? Math.min(100, (window.scrollY / max) * 100) : 0);
     };
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    window.addEventListener('resize', onScroll);
+    return () => { window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); };
+  }, []);
+
+  const onHeroMouseMove = useCallback((e) => {
+    const el = heroRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    el.style.setProperty('--mx', `${(((e.clientX - rect.left) / rect.width) * 100).toFixed(1)}%`);
+    el.style.setProperty('--my', `${(((e.clientY - rect.top) / rect.height) * 100).toFixed(1)}%`);
   }, []);
 
   const [minutesRef, minutesVal] = useCountUp(200, { duration: 1100 });
@@ -234,12 +302,13 @@ export default function LandingScreen() {
   const [roiRef, roiVal] = useCountUp(10, { duration: 1300 });
 
   const scrollTo = (id) => (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   return (
     <div className="ls-root" ref={rootRef}>
+      <div className="ls-progress" style={{ width: `${progress}%` }} aria-hidden="true" />
       <div className="ls-aurora" aria-hidden="true" />
 
       {/* ── Nav ── */}
@@ -256,39 +325,54 @@ export default function LandingScreen() {
             <button className="ls-nav-link" onClick={scrollTo('pricing')}>Pricing</button>
           </div>
           <div className="ls-nav-actions">
-            <button className="ls-btn-ghost" onClick={scrollTo('contact')}>Talk to us</button>
-            <span className="ls-cta-pulse">
-              <button className="ls-btn-primary" onClick={scrollTo('trial')}>Start free trial</button>
-            </span>
+            <button className="ls-btn-ghost" onClick={withRipple(scrollTo('contact'))}>Talk to us</button>
+            <Magnetic>
+              <span className="ls-cta-pulse">
+                <button className="ls-btn-primary" onClick={withRipple(scrollTo('trial'))}>Start free trial</button>
+              </span>
+            </Magnetic>
           </div>
         </div>
       </nav>
 
       {/* ── Hero ── */}
-      <section className="ls-hero">
+      <section className="ls-hero" ref={heroRef} onMouseMove={onHeroMouseMove}>
         <div className="ls-hero-ambient" aria-hidden="true" />
-        <div className="ls-hero-copy ls-reveal">
-          <span className="ls-eyebrow"><span className="ls-eyebrow-dot" />The last 100 metres, solved</span>
-          <h1 className="ls-headline">
+        <div className="ls-hero-spotlight" aria-hidden="true" />
+        <div className="ls-hero-floaters" aria-hidden="true">
+          {FLOATERS.map((f, i) => (
+            <span key={i} className="ls-floater" style={{ top: f.top, left: f.left, animationDuration: f.dur, animationDelay: f.delay }}>
+              <IconPin size={f.size} />
+            </span>
+          ))}
+        </div>
+
+        <div className="ls-hero-copy">
+          <span className="ls-eyebrow ls-reveal"><span className="ls-eyebrow-dot" />The last 100 metres, solved</span>
+          <h1 className="ls-headline ls-reveal" style={{ transitionDelay: '0.08s' }}>
             Every driver knows <span className="ls-headline-gradient">every delivery.</span>
           </h1>
-          <p className="ls-subhead">
+          <p className="ls-subhead ls-reveal" style={{ transitionDelay: '0.16s' }}>
             CNS gives your whole fleet the collective knowledge of your most experienced driver —
             entry points, gate codes, and instructions for every customer — so any driver can run
             any route, from day one.
           </p>
-          <div className="ls-hero-actions">
-            <span className="ls-cta-pulse">
-              <button className="ls-btn-primary ls-btn-large" onClick={scrollTo('trial')}>
-                Start your free trial <IconArrowRight />
-              </button>
-            </span>
-            <button className="ls-btn-ghost ls-btn-large" onClick={scrollTo('how-it-works')}>See how it works</button>
+          <div className="ls-hero-actions ls-reveal" style={{ transitionDelay: '0.24s' }}>
+            <Magnetic strength={20}>
+              <span className="ls-cta-pulse">
+                <button className="ls-btn-primary ls-btn-large" onClick={withRipple(scrollTo('trial'))}>
+                  Start your free trial <IconArrowRight />
+                </button>
+              </span>
+            </Magnetic>
+            <Magnetic strength={12}>
+              <button className="ls-btn-ghost ls-btn-large" onClick={withRipple(scrollTo('how-it-works'))}>See how it works</button>
+            </Magnetic>
           </div>
-          <p className="ls-hero-fineprint"><IconShieldSm /> No upfront cost. No commitment. Cancel anytime.</p>
+          <p className="ls-hero-fineprint ls-reveal" style={{ transitionDelay: '0.32s' }}><IconShieldSm /> No upfront cost. No commitment. Cancel anytime.</p>
         </div>
 
-        <div className="ls-hero-visual ls-reveal ls-reveal--scale">
+        <div className="ls-hero-visual ls-reveal ls-reveal--scale" style={{ transitionDelay: '0.2s' }}>
           <div className="ls-console">
             <div className="ls-console-head">
               <span className="ls-console-live"><span className="ls-console-live-dot" />LIVE NETWORK</span>
@@ -300,6 +384,15 @@ export default function LandingScreen() {
         </div>
       </section>
 
+      {/* ── Marquee ── */}
+      <div className="ls-marquee" aria-hidden="true">
+        <div className="ls-marquee-track">
+          {[...MARQUEE_ITEMS, ...MARQUEE_ITEMS].map((item, i) => (
+            <span className="ls-marquee-item" key={i}><span className="ls-marquee-dot" />{item}</span>
+          ))}
+        </div>
+      </div>
+
       {/* ── Trial ── */}
       <section className="ls-trial" id="trial">
         <div className="ls-trial-card ls-reveal">
@@ -310,9 +403,11 @@ export default function LandingScreen() {
               Give one of your experienced driver's runs to a driver who's never done it — with CNS.
               See the difference for yourself. If you like what you see, subscribe. If you don't, you've lost nothing.
             </p>
-            <span className="ls-cta-pulse">
-              <button className="ls-btn-primary" onClick={scrollTo('contact')}>Start my free trial <IconArrowRight /></button>
-            </span>
+            <Magnetic>
+              <span className="ls-cta-pulse">
+                <button className="ls-btn-primary" onClick={withRipple(scrollTo('contact'))}>Start my free trial <IconArrowRight /></button>
+              </span>
+            </Magnetic>
           </div>
           <div className="ls-trial-compare">
             <div className="ls-trial-row">
@@ -409,9 +504,11 @@ export default function LandingScreen() {
             <li><IconCheck /> Every driver, every route, always on</li>
             <li><IconCheck /> Customer knowledge refreshed weekly</li>
           </ul>
-          <span className="ls-cta-pulse" style={{ width: '100%' }}>
-            <button className="ls-btn-primary" onClick={scrollTo('contact')}>Start free trial <IconArrowRight /></button>
-          </span>
+          <Magnetic>
+            <span className="ls-cta-pulse" style={{ width: '100%' }}>
+              <button className="ls-btn-primary" onClick={withRipple(scrollTo('contact'))}>Start free trial <IconArrowRight /></button>
+            </span>
+          </Magnetic>
           <p className="ls-pricing-fineprint">No credit card required to trial.</p>
         </div>
       </section>
@@ -423,10 +520,14 @@ export default function LandingScreen() {
           <h2>Ready to see it for yourself?</h2>
           <p>Give one route to one driver who's never run it. We'll handle the rest — free, with no commitment.</p>
           <div className="ls-contact-actions">
-            <span className="ls-cta-pulse">
-              <button className="ls-btn-primary ls-btn-large">Start free trial <IconArrowRight /></button>
-            </span>
-            <button className="ls-btn-ghost ls-btn-large ls-btn-on-dark">Talk to us</button>
+            <Magnetic>
+              <span className="ls-cta-pulse">
+                <button className="ls-btn-primary ls-btn-large" onClick={withRipple()}>Start free trial <IconArrowRight /></button>
+              </span>
+            </Magnetic>
+            <Magnetic strength={12}>
+              <button className="ls-btn-ghost ls-btn-large ls-btn-on-dark" onClick={withRipple()}>Talk to us</button>
+            </Magnetic>
           </div>
         </div>
       </section>
@@ -449,7 +550,7 @@ export default function LandingScreen() {
         </div>
       </footer>
 
-      <button className={`ls-floating-cta ${showFloatingCta ? 'is-visible' : ''}`} onClick={scrollTo('trial')}>
+      <button className={`ls-floating-cta ${showFloatingCta ? 'is-visible' : ''}`} onClick={withRipple(scrollTo('trial'))}>
         Start free trial <IconArrowRight size={14} />
       </button>
     </div>
@@ -459,6 +560,15 @@ export default function LandingScreen() {
 /* ────────────────────────────────────────────────────────────────────────
    Small pieces
    ──────────────────────────────────────────────────────────────────── */
+function Magnetic({ children, strength = 16 }) {
+  const { ref, onMouseMove, onMouseLeave } = useMagnetic(strength);
+  return (
+    <span className="ls-magnetic" ref={ref} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}>
+      {children}
+    </span>
+  );
+}
+
 function FeatureCard({ Icon, title, body, delay }) {
   const { ref, onMouseMove, onMouseLeave } = useTilt(5);
   return (
