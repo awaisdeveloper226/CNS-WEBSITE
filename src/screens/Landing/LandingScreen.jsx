@@ -514,7 +514,7 @@ export default function LandingScreen({ onLoginClick, onSignupClick, onTermsPres
         <div className="ls-pricing-card ls-reveal ls-reveal--scale">
           <span className="ls-pricing-badge">Per driver, per month</span>
           <div className="ls-pricing-price">
-            <span className="ls-pricing-amount">$0.00</span>
+            <span className="ls-pricing-amount">A$9.99</span>
             <span className="ls-pricing-period">/ driver / month</span>
           </div>
           <ul className="ls-pricing-list">
@@ -528,7 +528,6 @@ export default function LandingScreen({ onLoginClick, onSignupClick, onTermsPres
               <button className="ls-btn-primary" onClick={goSignup}>Start free trial <IconArrowRight /></button>
             </span>
           </Magnetic>
-          <p className="ls-pricing-fineprint">No credit card required to trial.</p>
         </div>
       </section>
 
@@ -545,7 +544,7 @@ export default function LandingScreen({ onLoginClick, onSignupClick, onTermsPres
               </span>
             </Magnetic>
             <Magnetic strength={12}>
-              <button className="ls-btn-ghost ls-btn-large ls-btn-on-dark" onClick={withRipple(scrollTo('trial'))}>Talk to us</button>
+              <button className="ls-btn-ghost ls-btn-large ls-btn-on-dark" onClick={withRipple(() => { window.location.href = 'mailto:ahmed@cnsroute.com'; })}>Talk to us</button>
             </Magnetic>
           </div>
         </div>
@@ -621,7 +620,7 @@ function RoiCalculator() {
   const annualValue = monthlyValue * 12;
 
   const formatUSD = (n) =>
-    n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+    n.toLocaleString(undefined, { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 });
 
   const trackPercent = ((drivers - 1) / 99) * 100;
 
@@ -664,7 +663,7 @@ function RoiCalculator() {
       </div>
 
       <p className="ls-roi-calc-footnote">
-        Based on ~200 minutes reclaimed per driver monthly and an average driver wage of ${ASSUMED_HOURLY_RATE}/hr —
+        Based on ~200 minutes reclaimed per driver monthly and an average driver wage of A${ASSUMED_HOURLY_RATE}/hr —
         and that's before counting the training costs CNS removes entirely.
       </p>
     </div>
