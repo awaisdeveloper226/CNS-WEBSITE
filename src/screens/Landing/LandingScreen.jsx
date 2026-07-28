@@ -1,694 +1,939 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import './LandingScreen.css';
+import React, { useState, useMemo } from "react";
+import {
+  Truck,
+  MapPin,
+  PhoneCall,
+  Users,
+  Clock3,
+  PackageCheck,
+  CheckCircle2,
+  ArrowRight,
+  Route as RouteIcon,
+  ShieldCheck,
+  TrendingUp,
+  Menu,
+  X,
+  UserPlus,
+  CalendarOff,
+  ThermometerSun,
+} from "lucide-react";
 
-/* ────────────────────────────────────────────────────────────────────────
-   Small inline icon set — no external icon library dependency, so this
-   file drops into any React/React-Native-web setup as-is.
-   ──────────────────────────────────────────────────────────────────── */
-const iconProps = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
+/* ------------------------------------------------------------------
+   CNS — "Every Driver. Every Customer. Every Time."
+   Delivery knowledge platform landing page
+------------------------------------------------------------------- */
 
-const IconNetwork = (p) => (
-  <svg {...iconProps} width={p.size || 20} height={p.size || 20}>
-    <circle cx="12" cy="5" r="2.4" /><circle cx="5" cy="19" r="2.4" /><circle cx="19" cy="19" r="2.4" />
-    <path d="M12 7.4 L6.2 17.1 M12 7.4 L17.8 17.1 M7.4 19 L16.6 19" />
-  </svg>
-);
-const IconRoute = (p) => (
-  <svg {...iconProps} width={p.size || 20} height={p.size || 20}>
-    <circle cx="5" cy="6" r="2.2" /><circle cx="19" cy="18" r="2.2" />
-    <path d="M5 8.2 C5 13 8 11 12 13 C16 15 19 13 19 15.8" />
-  </svg>
-);
-const IconCapOff = (p) => (
-  <svg {...iconProps} width={p.size || 20} height={p.size || 20}>
-    <path d="M3 9.5 12 5l9 4.5-9 4.5-9-4.5Z" />
-    <path d="M7 11.6v4c0 1.4 2.2 2.9 5 2.9s5-1.5 5-2.9v-4" />
-    <path d="M3 15V9.5" strokeDasharray="1 3" />
-  </svg>
-);
-const IconPhoneOff = (p) => (
-  <svg {...iconProps} width={p.size || 20} height={p.size || 20}>
-    <path d="M9.5 5.3 7.7 4a1.7 1.7 0 0 0-2.3.3L4.2 6.1c-.5.6-.5 1.5.1 2.4a17 17 0 0 0 3.9 4.2" />
-    <path d="M11.4 12.9a17 17 0 0 0 4.2 3.9c.9.6 1.8.6 2.4.1l1.8-1.2a1.7 1.7 0 0 0 .3-2.3l-1.3-1.8" />
-    <path d="M3 3l18 18" />
-  </svg>
-);
-const IconSmile = (p) => (
-  <svg {...iconProps} width={p.size || 20} height={p.size || 20}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M8 13.5c1 1.6 2.4 2.4 4 2.4s3-.8 4-2.4" />
-    <path d="M8.5 9.5h.01M15.5 9.5h.01" />
-  </svg>
-);
-const IconRefresh = (p) => (
-  <svg {...iconProps} width={p.size || 20} height={p.size || 20}>
-    <path d="M20 11a8 8 0 0 0-14.6-4.4M4 4v4h4" />
-    <path d="M4 13a8 8 0 0 0 14.6 4.4M20 20v-4h-4" />
-  </svg>
-);
-const IconCheck = (p) => (
-  <svg {...iconProps} width={p.size || 16} height={p.size || 16}>
-    <path d="M4 12.5 9 17.5 20 6.5" />
-  </svg>
-);
-const IconArrowRight = (p) => (
-  <svg {...iconProps} width={p.size || 16} height={p.size || 16}>
-    <path d="M4 12h16M13 5l7 7-7 7" />
-  </svg>
-);
-const IconClock = (p) => (
-  <svg {...iconProps} width={p.size || 18} height={p.size || 18}>
-    <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.2 2" />
-  </svg>
-);
-const IconTrend = (p) => (
-  <svg {...iconProps} width={p.size || 18} height={p.size || 18}>
-    <path d="M3 17l6-6 4 4 8-9" /><path d="M15 6h6v6" />
-  </svg>
-);
-const IconShield = (p) => (
-  <svg {...iconProps} width={p.size || 18} height={p.size || 18}>
-    <path d="M12 3l7 3v6c0 5-3.5 7.7-7 9-3.5-1.3-7-4-7-9V6l7-3Z" />
-    <path d="M9 12l2 2 4-4" />
-  </svg>
-);
-const IconPin = (p) => (
-  <svg {...iconProps} width={p.size || 22} height={p.size || 22}>
-    <path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21Z" />
-    <circle cx="12" cy="9.5" r="2.3" />
-  </svg>
-);
-const IconShieldSm = (p) => <IconShield size={16} {...p} />;
-const IconClockSm = (p) => <IconClock size={16} {...p} />;
+const ROUTE_STOPS = [
+  { label: "Dock 3, rear alley", icon: MapPin },
+  { label: "Ring buzzer twice", icon: PhoneCall },
+  { label: "Skip reception", icon: CheckCircle2 },
+  { label: "Gate code 4471", icon: ShieldCheck },
+];
 
-/* ────────────────────────────────────────────────────────────────────────
-   Hooks
-   ──────────────────────────────────────────────────────────────────── */
+const PROBLEM_ITEMS = [
+  { icon: PhoneCall, text: "A call to dispatch, just to find the address" },
+  { icon: PhoneCall, text: "A call to the customer, just to find the entrance" },
+  { icon: Clock3, text: "Minutes lost circling for the right delivery point" },
+  { icon: Users, text: "An experienced driver pulled off their own run to help" },
+];
 
-/** Fades/rises every .ls-reveal element into view once, on first intersect. */
-function useScrollReveal(rootRef) {
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    const els = root.querySelectorAll('.ls-reveal');
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('is-visible');
-            io.unobserve(entry.target);
-          }
-        });
-      },
-      { threshold: 0.15, rootMargin: '0px 0px -40px 0px' }
-    );
-    els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
-  }, [rootRef]);
-}
+const KNOWLEDGE_ROWS = [
+  { who: "Driver A", knows: "The correct loading dock is round the back, not the front office." },
+  { who: "Driver B", knows: "The quickest entrance is through the yard gate, not the car park." },
+  { who: "Driver C", knows: "This customer wants deliveries taken straight to the storage room." },
+  { who: "Driver D", knows: "Reception adds ten minutes — go to the goods-in door instead." },
+];
 
-/**
- * Animates a number from 0 → target the first time the element scrolls into
- * view. Self-contained: the ref returned here should be attached directly to
- * the element you want observed, and the hook owns its own state — so the
- * per-frame updates only re-render the small component that calls this hook,
- * never the whole page. That's what keeps the count-up feeling smooth instead
- * of janky on a page with a lot of other animated elements around it.
- */
-function useCountUp(target, { duration = 1300, decimals = 0, threshold = 0.35 } = {}) {
-  const ref = useRef(null);
-  const [value, setValue] = useState(0);
+const SCENARIOS = [
+  { icon: ThermometerSun, title: "A driver calls in sick", body: "Someone else steps in and still finds every dock, buzzer, and preference exactly where they left off." },
+  { icon: CalendarOff, title: "A driver takes leave", body: "The run doesn't wait for one person's memory. Any capable driver can pick it up today." },
+  { icon: UserPlus, title: "A new hire starts Monday", body: "They arrive at their first stop already knowing what took a veteran three years to learn." },
+];
 
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    let raf;
-    let cancelled = false;
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting || cancelled) return;
-          const start = performance.now();
-          const tick = (now) => {
-            const t = Math.min(1, (now - start) / duration);
-            // Quintic ease-out — a soft, gradual landing rather than an
-            // abrupt stop, which reads as calmer for a "counting up" number.
-            const eased = 1 - Math.pow(1 - t, 5);
-            setValue(Number((target * eased).toFixed(decimals)));
-            if (t < 1) {
-              raf = requestAnimationFrame(tick);
-            }
-          };
-          raf = requestAnimationFrame(tick);
-          io.unobserve(el);
-        });
-      },
-      { threshold }
-    );
-    io.observe(el);
-    return () => { cancelled = true; io.disconnect(); if (raf) cancelAnimationFrame(raf); };
-  }, [target, duration, decimals, threshold]);
+const ONBOARD_STEPS = [
+  { n: "01", title: "We ride along", body: "Our team joins your drivers and sales reps on real runs to see how each customer actually likes to be handled." },
+  { n: "02", title: "We map it", body: "Every dock, gate code, buzzer, and quirk gets logged against the stop — no spreadsheets, no guesswork left to memory." },
+  { n: "03", title: "You switch it on", body: "Your knowledge base is live. No implementation fee, no setup cost, no mapping charge." },
+];
 
-  return [ref, value];
-}
+export default function CNSLandingPage() {
+  const [navOpen, setNavOpen] = useState(false);
+  const [driverCount, setDriverCount] = useState(25);
+  const [minutesSaved, setMinutesSaved] = useState(35);
 
-/** Subtle perspective tilt + cursor-glow position on a card, following the cursor. */
-function useTilt(maxDeg = 6) {
-  const ref = useRef(null);
-  const onMouseMove = useCallback((e) => {
-    const el = ref.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const px = (e.clientX - rect.left) / rect.width - 0.5;
-    const py = (e.clientY - rect.top) / rect.height - 0.5;
-    el.style.setProperty('--tiltY', `${(px * maxDeg * 2).toFixed(2)}deg`);
-    el.style.setProperty('--tiltX', `${(-py * maxDeg * 2).toFixed(2)}deg`);
-    el.style.setProperty('--mx', `${((px + 0.5) * 100).toFixed(1)}%`);
-    el.style.setProperty('--my', `${((py + 0.5) * 100).toFixed(1)}%`);
-  }, [maxDeg]);
-  const onMouseLeave = useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.setProperty('--tiltX', '0deg');
-    el.style.setProperty('--tiltY', '0deg');
-  }, []);
-  return { ref, onMouseMove, onMouseLeave };
-}
+  const monthlyCost = driverCount * 9.99;
+  const monthlyMinutesSaved = driverCount * minutesSaved * 22; // ~22 working days
+  const monthlyHoursSaved = Math.round(monthlyMinutesSaved / 60);
+  const breakEvenMinutes = 20;
+  const surplusMinutes = Math.max(minutesSaved - breakEvenMinutes, 0);
 
-/** Pulls a wrapped CTA gently toward the cursor while hovered. */
-function useMagnetic(strength = 16) {
-  const ref = useRef(null);
-  const onMouseMove = useCallback((e) => {
-    const el = ref.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const x = (e.clientX - rect.left - rect.width / 2) / rect.width;
-    const y = (e.clientY - rect.top - rect.height / 2) / rect.height;
-    el.style.transform = `translate(${(x * strength).toFixed(1)}px, ${(y * strength).toFixed(1)}px)`;
-  }, [strength]);
-  const onMouseLeave = useCallback(() => {
-    const el = ref.current;
-    if (el) el.style.transform = 'translate(0px, 0px)';
-  }, []);
-  return { ref, onMouseMove, onMouseLeave };
-}
-
-/** Spawns a short-lived ripple span at the click point inside the target button. */
-function spawnRipple(e) {
-  const btn = e.currentTarget;
-  if (!btn || typeof document === 'undefined') return;
-  const rect = btn.getBoundingClientRect();
-  const size = Math.max(rect.width, rect.height);
-  const span = document.createElement('span');
-  span.className = 'ls-ripple';
-  span.style.width = `${size}px`;
-  span.style.height = `${size}px`;
-  span.style.left = `${e.clientX - rect.left - size / 2}px`;
-  span.style.top = `${e.clientY - rect.top - size / 2}px`;
-  btn.appendChild(span);
-  window.setTimeout(() => span.remove(), 650);
-}
-const withRipple = (fn) => (e) => { spawnRipple(e); if (fn) fn(e); };
-
-/* ────────────────────────────────────────────────────────────────────────
-   Hero visual — an animated "knowledge network": one hub, every driver
-   connected to it and to each other's knowledge, pulses of information
-   travelling the lines on loop.
-   ──────────────────────────────────────────────────────────────────── */
-function KnowledgeMap() {
-  const nodes = [
-    { x: 110, y: 78 }, { x: 486, y: 78 }, { x: 86, y: 258 },
-    { x: 300, y: 292 }, { x: 512, y: 258 },
-  ];
-  const hub = { x: 300, y: 176 };
-  const paths = nodes.map((n) => `M${hub.x} ${hub.y} L${n.x} ${n.y}`);
+  const roiMultiple = useMemo(() => {
+    if (monthlyCost <= 0) return 0;
+    const valuePerDriver = minutesSaved * 22; // minutes saved per driver per month
+    const costPerDriverMinutes = 9.99; // cost is fixed regardless of minutes
+    return (valuePerDriver / breakEvenMinutes).toFixed(1);
+  }, [minutesSaved, monthlyCost]);
 
   return (
-    <svg className="ls-knowledge-map" viewBox="0 0 600 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Network showing every driver connected to a shared knowledge hub">
-      {paths.map((d, i) => (
-        <path key={`line-${i}`} className="ls-km-line" d={d} style={{ animationDelay: `${i * -0.4}s` }} />
-      ))}
-      {paths.map((d, i) => (
-        <circle key={`pulse-${i}`} className="ls-km-pulse" r="4"
-          style={{ offsetPath: `path('${d}')`, animationDelay: `${i * 0.55}s` }} />
-      ))}
-      {nodes.map((n, i) => (
-        <g key={`node-${i}`} className="ls-km-node" style={{ animationDelay: `${0.15 + i * 0.12}s` }}>
-          <circle cx={n.x} cy={n.y} r="22" style={{ animationDelay: `${0.15 + i * 0.12}s` }} />
-          <circle className="ls-km-node-dot" cx={n.x} cy={n.y} r="4.5" style={{ animationDelay: `${0.15 + i * 0.12}s` }} />
-        </g>
-      ))}
-      <circle className="ls-km-hub-ring" cx={hub.x} cy={hub.y} r="34" />
-      <circle className="ls-km-hub-ring ls-km-hub-ring--2" cx={hub.x} cy={hub.y} r="34" />
-      <circle className="ls-km-hub-fill" cx={hub.x} cy={hub.y} r="30" stroke="var(--route-glow)" strokeWidth="2" />
-      <text className="ls-km-hub-label" x={hub.x} y={hub.y + 4} textAnchor="middle">CNS</text>
-    </svg>
-  );
-}
+    <div className="cns-root">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
 
-/* ────────────────────────────────────────────────────────────────────────
-   Static content
-   ──────────────────────────────────────────────────────────────────── */
-const FEATURES = [
-  { icon: IconNetwork, title: 'One network, every driver', body: "Every delivery entry point, gate code, and instruction any driver has ever learned is available to every other driver — instantly, not eventually." },
-  { icon: IconRoute, title: 'No more matching driver to run', body: "You no longer need to send a specific driver to a specific run. Any driver on the network can pick up any route." },
-  { icon: IconCapOff, title: 'Training costs, gone', body: 'If a driver can drive and knows what to do, that\'s enough — he already has the same knowledge as your most experienced trainer.' },
-  { icon: IconPhoneOff, title: 'Fewer calls to dispatch', body: "When a driver already knows what to do, he doesn't need to ring dispatch or the customer to find out." },
-  { icon: IconSmile, title: 'Happier drivers, happier customers', body: 'A driver who always knows where to go isn\'t frustrated by a bad delivery, and the customer gets a seamless one.' },
-  { icon: IconRefresh, title: 'Always current', body: 'Every week, we re-map your customer base and add or update instructions, so the network stays 100% accurate.' },
-];
+        .cns-root {
+          --ink: #16241F;
+          --ink-soft: #4A5D53;
+          --ink-faint: #7C8B82;
+          --paper: #F5F4EE;
+          --paper-dim: #ECEADF;
+          --surface: #FFFFFF;
+          --green-deep: #0E3B2E;
+          --green: #167A51;
+          --green-bright: #2FAE73;
+          --blue: #2C77A6;
+          --orange: #E1631E;
+          --orange-deep: #B84713;
+          --line: #DBD7C9;
+          --line-soft: #E7E4D8;
+          font-family: 'Inter', sans-serif;
+          color: var(--ink);
+          background: var(--paper);
+          line-height: 1.5;
+          -webkit-font-smoothing: antialiased;
+        }
+        .cns-root * { box-sizing: border-box; }
+        .cns-display {
+          font-family: 'Space Grotesk', sans-serif;
+          letter-spacing: -0.02em;
+        }
+        .cns-mono {
+          font-family: 'IBM Plex Mono', monospace;
+          letter-spacing: 0.02em;
+        }
+        .cns-wrap {
+          max-width: 1160px;
+          margin: 0 auto;
+          padding: 0 32px;
+        }
+        @media (max-width: 640px) {
+          .cns-wrap { padding: 0 20px; }
+        }
 
-const STEPS = [
-  { title: 'We map your customers', body: 'We work with your drivers and sales reps to map every customer with complete, accurate delivery instructions.' },
-  { title: 'You run a free trial', body: "Hand a route only your best driver knows to someone unfamiliar with it — no cost, no commitment, no setup fee." },
-  { title: 'See it, then decide', body: 'Compare the results for yourself. If you like what you see, subscribe — if not, walk away, no strings attached.' },
-];
+        /* ---------- NAV ---------- */
+        .cns-nav {
+          position: sticky;
+          top: 0;
+          z-index: 50;
+          background: rgba(245, 244, 238, 0.92);
+          backdrop-filter: blur(8px);
+          border-bottom: 1px solid var(--line);
+        }
+        .cns-nav-inner {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          height: 76px;
+        }
+        .cns-brand {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .cns-brand-mark {
+          width: 38px;
+          height: 38px;
+          border-radius: 10px;
+          background: linear-gradient(160deg, var(--blue) 0%, var(--green) 55%, var(--green-bright) 100%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .cns-brand-word {
+          font-size: 20px;
+          font-weight: 700;
+        }
+        .cns-brand-tag {
+          font-size: 10px;
+          color: var(--ink-faint);
+          margin-top: -3px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+        .cns-nav-links {
+          display: flex;
+          align-items: center;
+          gap: 36px;
+        }
+        .cns-nav-links a {
+          font-size: 14.5px;
+          font-weight: 500;
+          color: var(--ink-soft);
+          text-decoration: none;
+        }
+        .cns-nav-links a:hover { color: var(--ink); }
+        .cns-nav-actions { display: flex; align-items: center; gap: 18px; }
+        .cns-nav-toggle { display: none; background: none; border: none; cursor: pointer; color: var(--ink); }
+        @media (max-width: 860px) {
+          .cns-nav-links { display: none; }
+          .cns-nav-toggle { display: block; }
+        }
+        .cns-mobile-menu {
+          border-bottom: 1px solid var(--line);
+          background: var(--surface);
+          padding: 8px 0 20px;
+        }
+        .cns-mobile-menu a {
+          display: block;
+          padding: 12px 0;
+          font-weight: 500;
+          color: var(--ink);
+          text-decoration: none;
+          border-bottom: 1px solid var(--line-soft);
+        }
 
-const MARQUEE_ITEMS = [
-  'Zero training costs', 'Every driver, every route', 'No calls to dispatch',
-  'Always up to date', 'Happier drivers', 'Seamless deliveries', 'Free to trial',
-];
+        /* ---------- BUTTONS ---------- */
+        .cns-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          font-weight: 600;
+          font-size: 14.5px;
+          padding: 12px 22px;
+          border-radius: 8px;
+          border: none;
+          cursor: pointer;
+          text-decoration: none;
+          white-space: nowrap;
+        }
+        .cns-btn-primary {
+          background: var(--orange);
+          color: #fff;
+        }
+        .cns-btn-primary:hover { background: var(--orange-deep); }
+        .cns-btn-ghost {
+          background: transparent;
+          color: var(--ink);
+          border: 1px solid var(--line);
+        }
+        .cns-btn-ghost:hover { border-color: var(--ink-faint); }
+        .cns-btn-dark {
+          background: var(--green-deep);
+          color: #fff;
+        }
+        .cns-btn-dark:hover { background: #0a2e24; }
 
-const FLOATERS = [
-  { top: '8%', left: '4%', size: 22, dur: '7.5s', delay: '0s' },
-  { top: '68%', left: '2%', size: 16, dur: '6s', delay: '1.2s' },
-  { top: '18%', left: '92%', size: 18, dur: '8s', delay: '0.6s' },
-  { top: '78%', left: '90%', size: 22, dur: '6.8s', delay: '2s' },
-];
+        /* ---------- HERO ---------- */
+        .cns-hero {
+          padding: 76px 0 60px;
+          position: relative;
+          overflow: hidden;
+        }
+        .cns-eyebrow {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 12px;
+          font-weight: 600;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--green);
+          background: rgba(22, 122, 81, 0.08);
+          border: 1px solid rgba(22, 122, 81, 0.25);
+          padding: 6px 14px;
+          border-radius: 999px;
+          margin-bottom: 22px;
+        }
+        .cns-hero-grid {
+          display: grid;
+          grid-template-columns: 1.05fr 0.95fr;
+          gap: 56px;
+          align-items: center;
+        }
+        @media (max-width: 900px) {
+          .cns-hero-grid { grid-template-columns: 1fr; }
+        }
+        .cns-h1 {
+          font-size: 52px;
+          font-weight: 700;
+          line-height: 1.06;
+          margin: 0 0 22px;
+        }
+        @media (max-width: 640px) {
+          .cns-h1 { font-size: 36px; }
+        }
+        .cns-h1 span { color: var(--green); }
+        .cns-hero-sub {
+          font-size: 18px;
+          color: var(--ink-soft);
+          max-width: 480px;
+          margin: 0 0 32px;
+        }
+        .cns-hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 34px; }
+        .cns-hero-proof {
+          display: flex;
+          gap: 28px;
+          flex-wrap: wrap;
+        }
+        .cns-proof-item { display: flex; align-items: baseline; gap: 8px; }
+        .cns-proof-num {
+          font-family: 'Space Grotesk', sans-serif;
+          font-weight: 700;
+          font-size: 22px;
+          color: var(--ink);
+        }
+        .cns-proof-label { font-size: 13px; color: var(--ink-faint); }
 
-/* ────────────────────────────────────────────────────────────────────────
-   Page
-   ──────────────────────────────────────────────────────────────────── */
-export default function LandingScreen({ onLoginClick, onSignupClick, onTermsPress, onPrivacyPress }) {
-  const rootRef = useRef(null);
-  const heroRef = useRef(null);
-  const [scrolled, setScrolled] = useState(false);
-  const [showFloatingCta, setShowFloatingCta] = useState(false);
-  const [progress, setProgress] = useState(0);
+        /* route visual */
+        .cns-route-card {
+          background: var(--surface);
+          border: 1px solid var(--line);
+          border-radius: 18px;
+          padding: 28px 26px 22px;
+          position: relative;
+        }
+        .cns-route-card-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 22px;
+        }
+        .cns-route-card-title {
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--ink-faint);
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+        .cns-route-live {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          color: var(--green);
+          font-weight: 600;
+        }
+        .cns-route-dot {
+          width: 7px; height: 7px; border-radius: 50%;
+          background: var(--green-bright);
+        }
+        .cns-route-line-svg { width: 100%; height: auto; display: block; margin-bottom: 6px; }
+        .cns-route-stops {
+          display: flex;
+          flex-direction: column;
+          gap: 0;
+        }
+        .cns-stop {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 12px 0;
+          border-bottom: 1px dashed var(--line-soft);
+        }
+        .cns-stop:last-child { border-bottom: none; }
+        .cns-stop-icon {
+          width: 32px; height: 32px;
+          border-radius: 8px;
+          background: var(--paper-dim);
+          display: flex; align-items: center; justify-content: center;
+          color: var(--green);
+          flex-shrink: 0;
+        }
+        .cns-stop-text { font-size: 14.5px; color: var(--ink); font-weight: 500; }
+        .cns-stop-driver { font-size: 11.5px; color: var(--ink-faint); }
 
-  useScrollReveal(rootRef);
+        /* ---------- SECTION SCAFFOLD ---------- */
+        .cns-section { padding: 88px 0; }
+        .cns-section-alt { background: var(--surface); }
+        .cns-kicker {
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 12.5px;
+          font-weight: 600;
+          color: var(--orange);
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          margin-bottom: 14px;
+        }
+        .cns-h2 {
+          font-size: 36px;
+          font-weight: 700;
+          line-height: 1.15;
+          margin: 0 0 18px;
+          max-width: 640px;
+        }
+        @media (max-width: 640px) { .cns-h2 { font-size: 28px; } }
+        .cns-section-sub {
+          font-size: 16.5px;
+          color: var(--ink-soft);
+          max-width: 560px;
+          margin-bottom: 48px;
+        }
 
-  useEffect(() => {
-    const onScroll = () => {
-      setScrolled(window.scrollY > 8);
-      setShowFloatingCta(window.scrollY > 620);
-      const max = document.documentElement.scrollHeight - window.innerHeight;
-      setProgress(max > 0 ? Math.min(100, (window.scrollY / max) * 100) : 0);
-    };
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
-    return () => { window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); };
-  }, []);
+        /* divider */
+        .cns-divider {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 0 0;
+        }
+        .cns-divider-dash {
+          flex: 1;
+          height: 1px;
+          background-image: repeating-linear-gradient(to right, var(--line) 0, var(--line) 6px, transparent 6px, transparent 12px);
+        }
+        .cns-divider-node { width: 7px; height: 7px; border-radius: 50%; background: var(--green-bright); flex-shrink: 0; }
 
-  const onHeroMouseMove = useCallback((e) => {
-    const el = heroRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    el.style.setProperty('--mx', `${(((e.clientX - rect.left) / rect.width) * 100).toFixed(1)}%`);
-    el.style.setProperty('--my', `${(((e.clientY - rect.top) / rect.height) * 100).toFixed(1)}%`);
-  }, []);
+        /* ---------- PROBLEM ---------- */
+        .cns-problem-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 14px;
+        }
+        @media (max-width: 640px) { .cns-problem-grid { grid-template-columns: 1fr; } }
+        .cns-problem-row {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          background: var(--paper);
+          border: 1px solid var(--line);
+          border-radius: 10px;
+          padding: 16px 18px;
+        }
+        .cns-problem-icon {
+          width: 34px; height: 34px;
+          border-radius: 8px;
+          background: rgba(225, 99, 30, 0.1);
+          color: var(--orange-deep);
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0;
+        }
+        .cns-problem-text { font-size: 14.5px; font-weight: 500; }
 
-  const scrollTo = (id) => (e) => {
-    if (e && e.preventDefault) e.preventDefault();
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
+        .cns-problem-callout {
+          margin-top: 36px;
+          padding: 22px 24px;
+          border-left: 3px solid var(--orange);
+          background: rgba(225, 99, 30, 0.06);
+          font-size: 16px;
+          color: var(--ink);
+          font-weight: 500;
+        }
 
-  // "Start free trial" always means one thing: get the visitor onto the
-  // sign-up screen. Falls back to scrolling to the on-page trial pitch if no
-  // handler was passed in, so the button never silently does nothing.
-  const goSignup = withRipple(() => {
-    if (onSignupClick) onSignupClick();
-    else scrollTo('trial')();
-  });
+        /* ---------- KNOWLEDGE TABLE ---------- */
+        .cns-know-list {
+          display: flex;
+          flex-direction: column;
+          border: 1px solid var(--line);
+          border-radius: 12px;
+          overflow: hidden;
+          background: var(--paper);
+        }
+        .cns-know-row {
+          display: grid;
+          grid-template-columns: 130px 1fr;
+          gap: 18px;
+          padding: 18px 22px;
+          border-bottom: 1px solid var(--line-soft);
+          align-items: center;
+        }
+        .cns-know-row:last-child { border-bottom: none; }
+        @media (max-width: 640px) {
+          .cns-know-row { grid-template-columns: 1fr; gap: 6px; }
+        }
+        .cns-know-who {
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 12.5px;
+          font-weight: 600;
+          color: var(--green);
+        }
+        .cns-know-text { font-size: 15px; color: var(--ink); }
+        .cns-know-arrow-row {
+          display: flex;
+          justify-content: center;
+          padding: 18px 0 4px;
+          color: var(--ink-faint);
+        }
+        .cns-know-result {
+          text-align: center;
+          font-size: 18px;
+          font-weight: 600;
+          margin-top: 10px;
+        }
+        .cns-know-result span { color: var(--green); }
 
-  const goLogin = withRipple(() => {
-    if (onLoginClick) onLoginClick();
-  });
+        /* ---------- SCENARIOS ---------- */
+        .cns-scenario-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 20px;
+        }
+        @media (max-width: 860px) { .cns-scenario-grid { grid-template-columns: 1fr; } }
+        .cns-scenario-card {
+          background: var(--paper);
+          border: 1px solid var(--line);
+          border-radius: 14px;
+          padding: 26px 24px;
+        }
+        .cns-scenario-icon {
+          width: 40px; height: 40px;
+          border-radius: 10px;
+          background: var(--surface);
+          border: 1px solid var(--line);
+          display: flex; align-items: center; justify-content: center;
+          color: var(--blue);
+          margin-bottom: 18px;
+        }
+        .cns-scenario-title { font-weight: 600; font-size: 16.5px; margin-bottom: 8px; }
+        .cns-scenario-body { font-size: 14.5px; color: var(--ink-soft); }
 
-  return (
-    <div className="ls-root" ref={rootRef}>
-      <div className="ls-progress" style={{ width: `${progress}%` }} aria-hidden="true" />
-      <div className="ls-aurora" aria-hidden="true" />
+        /* ---------- ROI CALCULATOR ---------- */
+        .cns-roi {
+          background: var(--green-deep);
+          border-radius: 20px;
+          padding: 48px;
+          color: #fff;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 48px;
+          align-items: center;
+        }
+        @media (max-width: 860px) {
+          .cns-roi { grid-template-columns: 1fr; padding: 32px 24px; }
+        }
+        .cns-roi-label {
+          font-size: 13px;
+          color: rgba(255,255,255,0.65);
+          margin-bottom: 6px;
+          display: flex;
+          justify-content: space-between;
+        }
+        .cns-roi-value { font-family: 'Space Grotesk', sans-serif; font-weight: 600; }
+        .cns-roi-slider-block { margin-bottom: 28px; }
+        .cns-roi-slider-block:last-child { margin-bottom: 0; }
+        .cns-roi-slider {
+          width: 100%;
+          accent-color: var(--green-bright);
+          height: 4px;
+        }
+        .cns-roi-stats {
+          display: flex;
+          flex-direction: column;
+          gap: 22px;
+        }
+        .cns-roi-big {
+          font-family: 'Space Grotesk', sans-serif;
+          font-size: 44px;
+          font-weight: 700;
+          line-height: 1;
+        }
+        .cns-roi-big-label { font-size: 13.5px; color: rgba(255,255,255,0.65); margin-top: 8px; }
+        .cns-roi-mini-row { display: flex; gap: 28px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.15); }
+        .cns-roi-mini-num { font-size: 20px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; }
+        .cns-roi-mini-label { font-size: 12px; color: rgba(255,255,255,0.6); margin-top: 2px; }
 
-      {/* ── Nav ── */}
-      <nav className={`ls-nav ${scrolled ? 'ls-nav--scrolled' : ''}`}>
-        <div className="ls-nav-inner">
-          <div className="ls-wordmark">
-            <span className="ls-wordmark-dot" />
-            CNS
-          </div>
-          <div className="ls-nav-links">
-            <button className="ls-nav-link" onClick={scrollTo('how-it-works')}>How it works</button>
-            <button className="ls-nav-link" onClick={scrollTo('features')}>Features</button>
-            <button className="ls-nav-link" onClick={scrollTo('roi')}>ROI</button>
-            <button className="ls-nav-link" onClick={scrollTo('pricing')}>Pricing</button>
-          </div>
-          <div className="ls-nav-actions">
-            {onLoginClick && <button className="ls-btn-ghost" onClick={goLogin}>Log in</button>}
-            <Magnetic>
-              <span className="ls-cta-pulse">
-                <button className="ls-btn-primary" onClick={goSignup}>Start free trial</button>
-              </span>
-            </Magnetic>
-          </div>
-        </div>
-      </nav>
+        /* ---------- ONBOARDING ---------- */
+        .cns-onboard-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 0;
+          border: 1px solid var(--line);
+          border-radius: 14px;
+          overflow: hidden;
+          background: var(--surface);
+        }
+        @media (max-width: 860px) { .cns-onboard-grid { grid-template-columns: 1fr; } }
+        .cns-onboard-cell {
+          padding: 30px 26px;
+          border-right: 1px solid var(--line);
+        }
+        .cns-onboard-cell:last-child { border-right: none; }
+        @media (max-width: 860px) {
+          .cns-onboard-cell { border-right: none; border-bottom: 1px solid var(--line); }
+          .cns-onboard-cell:last-child { border-bottom: none; }
+        }
+        .cns-onboard-n {
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 13px;
+          color: var(--orange);
+          font-weight: 600;
+          margin-bottom: 14px;
+        }
+        .cns-onboard-title { font-weight: 600; font-size: 17px; margin-bottom: 8px; }
+        .cns-onboard-body { font-size: 14.5px; color: var(--ink-soft); }
+        .cns-onboard-note {
+          text-align: center;
+          margin-top: 22px;
+          font-size: 14px;
+          color: var(--ink-faint);
+        }
 
-      {/* ── Hero ── */}
-      <section className="ls-hero" ref={heroRef} onMouseMove={onHeroMouseMove}>
-        <div className="ls-hero-ambient" aria-hidden="true" />
-        <div className="ls-hero-spotlight" aria-hidden="true" />
-        <div className="ls-hero-floaters" aria-hidden="true">
-          {FLOATERS.map((f, i) => (
-            <span key={i} className="ls-floater" style={{ top: f.top, left: f.left, animationDuration: f.dur, animationDelay: f.delay }}>
-              <IconPin size={f.size} />
-            </span>
-          ))}
-        </div>
+        /* ---------- PROOF BANNER ---------- */
+        .cns-proof-banner {
+          border: 1px solid var(--line);
+          border-radius: 18px;
+          padding: 44px;
+          background: var(--paper-dim);
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 32px;
+          align-items: center;
+        }
+        @media (max-width: 780px) {
+          .cns-proof-banner { grid-template-columns: 1fr; text-align: left; }
+        }
+        .cns-proof-banner h3 { font-size: 24px; margin: 0 0 10px; }
+        .cns-proof-banner p { font-size: 15px; color: var(--ink-soft); margin: 0; max-width: 480px; }
 
-        <div className="ls-hero-copy">
-          <span className="ls-eyebrow ls-reveal"><span className="ls-eyebrow-dot" />The last 100 metres, solved</span>
-          <h1 className="ls-headline ls-reveal" style={{ transitionDelay: '0.08s' }}>
-            Every driver knows <span className="ls-headline-gradient">every delivery.</span>
-          </h1>
-          <p className="ls-subhead ls-reveal" style={{ transitionDelay: '0.16s' }}>
-            CNS gives your whole fleet the collective knowledge of your most experienced driver —
-            entry points, gate codes, and instructions for every customer — so any driver can run
-            any route, from day one.
-          </p>
-          <div className="ls-hero-actions ls-reveal" style={{ transitionDelay: '0.24s' }}>
-            <Magnetic strength={20}>
-              <span className="ls-cta-pulse">
-                <button className="ls-btn-primary ls-btn-large" onClick={goSignup}>
-                  Start your free trial <IconArrowRight />
-                </button>
-              </span>
-            </Magnetic>
-            <Magnetic strength={12}>
-              <button className="ls-btn-ghost ls-btn-large" onClick={withRipple(scrollTo('how-it-works'))}>See how it works</button>
-            </Magnetic>
-          </div>
-          <p className="ls-hero-fineprint ls-reveal" style={{ transitionDelay: '0.32s' }}><IconShieldSm /> No upfront cost. No commitment. Cancel anytime.</p>
-        </div>
+        /* ---------- FINAL CTA ---------- */
+        .cns-final {
+          background: var(--green-deep);
+          border-radius: 22px;
+          padding: 64px 48px;
+          text-align: center;
+          color: #fff;
+        }
+        .cns-final h2 { color: #fff; margin: 0 auto 16px; }
+        .cns-final p { color: rgba(255,255,255,0.72); max-width: 480px; margin: 0 auto 30px; }
+        .cns-final-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 
-        <div className="ls-hero-visual ls-reveal ls-reveal--scale" style={{ transitionDelay: '0.2s' }}>
-          <div className="ls-console">
-            <div className="ls-console-head">
-              <span className="ls-console-live"><span className="ls-console-live-dot" />LIVE NETWORK</span>
-              <span className="ls-console-label">5 drivers · 1 hub</span>
+        /* ---------- FOOTER ---------- */
+        .cns-footer {
+          background: var(--green-deep);
+          color: rgba(255,255,255,0.6);
+          padding: 40px 0;
+          font-size: 13.5px;
+        }
+        .cns-footer-inner {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+        .cns-footer-brand { color: #fff; font-weight: 600; font-family: 'Space Grotesk', sans-serif; }
+      `}</style>
+
+      {/* ---------------- NAV ---------------- */}
+      <header className="cns-nav">
+        <div className="cns-wrap cns-nav-inner">
+          <div className="cns-brand">
+            <div className="cns-brand-mark">
+              <RouteIcon size={19} color="#fff" strokeWidth={2.4} />
             </div>
-            <KnowledgeMap />
-            <span className="ls-console-caption">Every driver's knowledge, shared with every other driver — in real time.</span>
+            <div>
+              <div className="cns-brand-word cns-display">CNS</div>
+              <div className="cns-brand-tag">Delivery knowledge</div>
+            </div>
+          </div>
+
+          <nav className="cns-nav-links">
+            <a href="#problem">The problem</a>
+            <a href="#how-it-works">How it works</a>
+            <a href="#roi">ROI</a>
+            <a href="#onboarding">Getting started</a>
+          </nav>
+
+          <div className="cns-nav-actions">
+            <a href="#cta" className="cns-btn cns-btn-primary">
+              Book a free trial <ArrowRight size={15} />
+            </a>
+            <button className="cns-nav-toggle" onClick={() => setNavOpen(!navOpen)} aria-label="Toggle menu">
+              {navOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
           </div>
         </div>
-      </section>
+        {navOpen && (
+          <div className="cns-mobile-menu">
+            <div className="cns-wrap">
+              <a href="#problem" onClick={() => setNavOpen(false)}>The problem</a>
+              <a href="#how-it-works" onClick={() => setNavOpen(false)}>How it works</a>
+              <a href="#roi" onClick={() => setNavOpen(false)}>ROI</a>
+              <a href="#onboarding" onClick={() => setNavOpen(false)}>Getting started</a>
+            </div>
+          </div>
+        )}
+      </header>
 
-      {/* ── Marquee ── */}
-      <div className="ls-marquee" aria-hidden="true">
-        <div className="ls-marquee-track">
-          {[...MARQUEE_ITEMS, ...MARQUEE_ITEMS].map((item, i) => (
-            <span className="ls-marquee-item" key={i}><span className="ls-marquee-dot" />{item}</span>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Trial ── */}
-      <section className="ls-trial" id="trial">
-        <div className="ls-trial-card ls-reveal">
-          <div className="ls-trial-copy">
-            <span className="ls-trial-tag">Free trial</span>
-            <h2>Try it before you trust it.</h2>
-            <p>
-              Give one of your experienced driver's runs to a driver who's never done it — with CNS.
-              See the difference for yourself. If you like what you see, subscribe. If you don't, you've lost nothing.
+      {/* ---------------- HERO ---------------- */}
+      <section className="cns-hero">
+        <div className="cns-wrap cns-hero-grid">
+          <div>
+            <div className="cns-eyebrow">
+              <Truck size={13} /> Built for delivery fleets
+            </div>
+            <h1 className="cns-h1 cns-display">
+              Every driver.<br />Every customer.<br /><span>Every time.</span>
+            </h1>
+            <p className="cns-hero-sub">
+              Give every driver the experience of your entire fleet. CNS captures what
+              your best drivers already know — the right dock, the right entrance, the
+              right way in — and puts it in front of whoever's behind the wheel.
             </p>
-            <Magnetic>
-              <span className="ls-cta-pulse">
-                <button className="ls-btn-primary" onClick={goSignup}>Start my free trial <IconArrowRight /></button>
-              </span>
-            </Magnetic>
-          </div>
-          <div className="ls-trial-compare">
-            <div className="ls-trial-row">
-              <span className="ls-trial-avatar ls-trial-avatar--vet">JD</span>
-              <div className="ls-trial-row-body">
-                <div className="ls-trial-row-name">Experienced driver</div>
-                <div className="ls-trial-row-sub">Knows the run by heart</div>
+            <div className="cns-hero-ctas">
+              <a href="#cta" className="cns-btn cns-btn-primary">
+                Book a free trial <ArrowRight size={15} />
+              </a>
+              <a href="#how-it-works" className="cns-btn cns-btn-ghost">
+                See how it works
+              </a>
+            </div>
+            <div className="cns-hero-proof">
+              <div className="cns-proof-item">
+                <span className="cns-proof-num cns-mono">20 min</span>
+                <span className="cns-proof-label">to break even, per driver, per month</span>
               </div>
-              <span className="ls-trial-row-badge ls-trial-row-badge--match">Baseline run</span>
-            </div>
-            <span className="ls-trial-vs">shares knowledge with →</span>
-            <div className="ls-trial-row">
-              <span className="ls-trial-avatar ls-trial-avatar--new">AK</span>
-              <div className="ls-trial-row-body">
-                <div className="ls-trial-row-name">New driver, same run</div>
-                <div className="ls-trial-row-sub">Never done this route before</div>
+              <div className="cns-proof-item">
+                <span className="cns-proof-num cns-mono">$0</span>
+                <span className="cns-proof-label">setup, mapping, or implementation cost</span>
               </div>
-              <span className="ls-trial-row-badge ls-trial-row-badge--match">On CNS</span>
+            </div>
+          </div>
+
+          <div className="cns-route-card">
+            <div className="cns-route-card-top">
+              <span className="cns-route-card-title">Route 14 &middot; Riverside industrial</span>
+              <span className="cns-route-live"><span className="cns-route-dot" /> Live knowledge</span>
+            </div>
+            <svg className="cns-route-line-svg" viewBox="0 0 340 36" fill="none">
+              <path d="M8 28 C 60 8, 100 8, 150 20 S 240 32, 332 10" stroke="#DBD7C9" strokeWidth="2" strokeDasharray="1 8" strokeLinecap="round" />
+              <circle cx="8" cy="28" r="4" fill="#2FAE73" />
+              <circle cx="150" cy="20" r="4" fill="#2C77A6" />
+              <circle cx="332" cy="10" r="4" fill="#E1631E" />
+            </svg>
+            <div className="cns-route-stops">
+              {ROUTE_STOPS.map((s, i) => (
+                <div className="cns-stop" key={i}>
+                  <div className="cns-stop-icon"><s.icon size={16} /></div>
+                  <div>
+                    <div className="cns-stop-text">{s.label}</div>
+                    <div className="cns-stop-driver cns-mono">learned once &middot; known by all</div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── Features ── */}
-      <section className="ls-section ls-section--tint" id="features">
-        <div className="ls-section-head ls-reveal">
-          <h2>Built to remove the guesswork</h2>
-          <p className="ls-section-sub">Everything a driver needs to know, already known — before the run starts.</p>
-        </div>
-        <div className="ls-feature-grid">
-          {FEATURES.map(({ icon: Icon, title, body }, i) => (
-            <FeatureCard key={title} Icon={Icon} title={title} body={body} delay={i * 0.06} />
-          ))}
-        </div>
-      </section>
-
-      {/* ── How it works ── */}
-      <section className="ls-section" id="how-it-works">
-        <div className="ls-section-head ls-reveal">
-          <h2>From first route to full rollout</h2>
-          <p className="ls-section-sub">Three steps, starting with a trial you can walk away from.</p>
-        </div>
-        <div className="ls-step-grid">
-          {STEPS.map((s, i) => (
-            <div className="ls-step-card ls-reveal" key={s.title} style={{ transitionDelay: `${i * 0.08}s` }}>
-              <span className="ls-step-index">{String(i + 1).padStart(2, '0')}</span>
-              <h3>{s.title}</h3>
-              <p>{s.body}</p>
-              {i < STEPS.length - 1 && <span className="ls-step-connector" aria-hidden="true" />}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── ROI ── */}
-      <section className="ls-section ls-section--tint" id="roi">
-        <div className="ls-section-head ls-reveal">
-          <h2>Small per-driver savings, real fleet-wide value</h2>
-          <p className="ls-section-sub">200 minutes a driver doesn't sound like much — until you multiply it across your team, every month.</p>
-        </div>
-        <div className="ls-roi-panel ls-reveal">
-          <div className="ls-roi-stats">
-            <RoiStat icon={<IconClock />} target={200} duration={1200} label="reclaimed per driver, every month" suffix=" min" />
-            <RoiStat icon={<IconClockSm />} target={3.3} decimals={1} duration={1300} label="of driver time, back in the schedule" suffix=" hrs" />
-            <RoiStat icon={<IconTrend />} target={10} duration={1450} label="return on investment" prefix="up to " suffix="x" />
-          </div>
-          <RoiCalculator />
-          <p className="ls-roi-footnote">
-            A driver working an 8-hour day covers about 9,600 minutes a month. A shared knowledge network that keeps every
-            customer's instructions current reclaims an estimated 200 of those minutes per driver — before counting the
-            training costs it removes entirely, since a new driver already has the same knowledge as your most experienced
-            one. Across a whole fleet, that adds up fast.
+      {/* ---------------- PROBLEM ---------------- */}
+      <section className="cns-section" id="problem">
+        <div className="cns-wrap">
+          <div className="cns-kicker">The problem</div>
+          <h2 className="cns-h2 cns-display">Every time a driver has to ask, your business loses time.</h2>
+          <p className="cns-section-sub">
+            Individually, these are small delays. Across a fleet, every day, they add
+            up to a slower operation, a busier dispatch desk, and a delivery experience
+            that changes depending on who shows up.
           </p>
-        </div>
-      </section>
 
-
-      {/* ── Pricing ── */}
-      <section className="ls-section" id="pricing">
-        <div className="ls-section-head ls-reveal">
-          <h2>Simple, honest pricing</h2>
-          <p className="ls-section-sub">No implementation charges. No upfront costs. No hidden fees.</p>
-        </div>
-        <div className="ls-pricing-card ls-reveal ls-reveal--scale">
-          <span className="ls-pricing-badge">Per driver, per month</span>
-          <div className="ls-pricing-price">
-            <span className="ls-pricing-amount">A$9.99</span>
-            <span className="ls-pricing-period">/ driver / month</span>
+          <div className="cns-problem-grid">
+            {PROBLEM_ITEMS.map((p, i) => (
+              <div className="cns-problem-row" key={i}>
+                <div className="cns-problem-icon"><p.icon size={17} /></div>
+                <div className="cns-problem-text">{p.text}</div>
+              </div>
+            ))}
           </div>
-          <ul className="ls-pricing-list">
-            <li><IconCheck /> No implementation charges</li>
-            <li><IconCheck /> No upfront costs or hidden fees</li>
-            <li><IconCheck /> Every driver, every route, always on</li>
-            <li><IconCheck /> Customer knowledge refreshed weekly</li>
-          </ul>
-          <Magnetic>
-            <span className="ls-cta-pulse" style={{ width: '100%' }}>
-              <button className="ls-btn-primary" onClick={goSignup}>Start free trial <IconArrowRight /></button>
-            </span>
-          </Magnetic>
-        </div>
-      </section>
 
-      {/* ── Contact ── */}
-      <section className="ls-contact" id="contact">
-        <div className="ls-contact-glow" aria-hidden="true" />
-        <div className="ls-contact-inner ls-reveal">
-          <h2>Ready to see it for yourself?</h2>
-          <p>Give one route to one driver who's never run it. We'll handle the rest — free, with no commitment.</p>
-          <div className="ls-contact-actions">
-            <Magnetic>
-              <span className="ls-cta-pulse">
-                <button className="ls-btn-primary ls-btn-large" onClick={goSignup}>Start free trial <IconArrowRight /></button>
-              </span>
-            </Magnetic>
-            <Magnetic strength={12}>
-              <button className="ls-btn-ghost ls-btn-large ls-btn-on-dark" onClick={withRipple(() => { window.location.href = 'mailto:ahmed@cnsroute.com'; })}>Talk to us</button>
-            </Magnetic>
+          <div className="cns-problem-callout">
+            The information to prevent these delays already exists. It's just scattered
+            across your workforce — one driver at a time.
           </div>
         </div>
       </section>
 
-      {/* ── Footer ── */}
-      <footer className="ls-footer">
-        <div className="ls-footer-inner">
-          <div className="ls-footer-brand">
-            <div className="ls-wordmark">
-              <span className="ls-wordmark-dot" />
-              CNS
+      <div className="cns-wrap"><div className="cns-divider"><div className="cns-divider-dash" /><div className="cns-divider-node" /><div className="cns-divider-dash" /></div></div>
+
+      {/* ---------------- ONE DRIVER'S EXPERIENCE ---------------- */}
+      <section className="cns-section" id="how-it-works">
+        <div className="cns-wrap">
+          <div className="cns-kicker">How it works</div>
+          <h2 className="cns-h2 cns-display">One driver's experience becomes everyone's.</h2>
+          <p className="cns-section-sub">
+            Right now, this knowledge lives in four different heads. CNS brings it into
+            one place, so the next driver on this route starts where the last one left off.
+          </p>
+
+          <div className="cns-know-list">
+            {KNOWLEDGE_ROWS.map((k, i) => (
+              <div className="cns-know-row" key={i}>
+                <span className="cns-know-who">{k.who}</span>
+                <span className="cns-know-text">{k.knows}</span>
+              </div>
+            ))}
+          </div>
+          <div className="cns-know-arrow-row"><ArrowRight size={18} /></div>
+          <div className="cns-know-result">
+            Every driver arrives knowing what took years to learn <span>— on day one.</span>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------- SCENARIOS ---------------- */}
+      <section className="cns-section cns-section-alt">
+        <div className="cns-wrap">
+          <div className="cns-kicker">Any driver, any route, any time</div>
+          <h2 className="cns-h2 cns-display">Stop managing around people's memory.</h2>
+          <p className="cns-section-sub">
+            Start managing around information you can actually rely on — whoever's driving today.
+          </p>
+
+          <div className="cns-scenario-grid">
+            {SCENARIOS.map((s, i) => (
+              <div className="cns-scenario-card" key={i}>
+                <div className="cns-scenario-icon"><s.icon size={19} /></div>
+                <div className="cns-scenario-title">{s.title}</div>
+                <div className="cns-scenario-body">{s.body}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------- ROI CALCULATOR ---------------- */}
+      <section className="cns-section" id="roi">
+        <div className="cns-wrap">
+          <div className="cns-kicker">The math</div>
+          <h2 className="cns-h2 cns-display">A driver only needs to save 20 minutes a month.</h2>
+          <p className="cns-section-sub">
+            CNS costs $9.99 per driver, per month. The average driver works around
+            10,000 minutes a month. Everything saved past the first 20 is pure
+            productivity. Adjust the numbers for your own fleet below.
+          </p>
+
+          <div className="cns-roi">
+            <div>
+              <div className="cns-roi-slider-block">
+                <div className="cns-roi-label">
+                  <span>Drivers on your fleet</span>
+                  <span className="cns-roi-value cns-mono">{driverCount}</span>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={200}
+                  value={driverCount}
+                  onChange={(e) => setDriverCount(Number(e.target.value))}
+                  className="cns-roi-slider"
+                />
+              </div>
+              <div className="cns-roi-slider-block">
+                <div className="cns-roi-label">
+                  <span>Minutes saved per driver, per day</span>
+                  <span className="cns-roi-value cns-mono">{minutesSaved} min</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={90}
+                  value={minutesSaved}
+                  onChange={(e) => setMinutesSaved(Number(e.target.value))}
+                  className="cns-roi-slider"
+                />
+              </div>
+              <div className="cns-roi-mini-row">
+                <div>
+                  <div className="cns-roi-mini-num cns-mono">${monthlyCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                  <div className="cns-roi-mini-label">Monthly cost, whole fleet</div>
+                </div>
+                <div>
+                  <div className="cns-roi-mini-num cns-mono">{breakEvenMinutes} min</div>
+                  <div className="cns-roi-mini-label">Needed to break even</div>
+                </div>
+              </div>
             </div>
-            <p>Courier Navigator System — solving the last 100 metres.</p>
+
+            <div className="cns-roi-stats">
+              <div>
+                <div className="cns-roi-big cns-mono">{monthlyHoursSaved.toLocaleString()} hrs</div>
+                <div className="cns-roi-big-label">Estimated driver time saved across your fleet, every month</div>
+              </div>
+              <div>
+                <div className="cns-roi-big cns-mono">
+                  {surplusMinutes > 0 ? `${surplusMinutes} min` : "0 min"}
+                </div>
+                <div className="cns-roi-big-label">Pure productivity gain, per driver, per day, above break-even</div>
+              </div>
+            </div>
           </div>
-          <div className="ls-footer-legal">
-            <button className="ls-footer-legal-link" onClick={onPrivacyPress}>Privacy</button>
-            <span className="ls-footer-dot" />
-            <button className="ls-footer-legal-link" onClick={onTermsPress}>Terms</button>
+        </div>
+      </section>
+
+      <div className="cns-wrap"><div className="cns-divider"><div className="cns-divider-dash" /><div className="cns-divider-node" /><div className="cns-divider-dash" /></div></div>
+
+      {/* ---------------- ONBOARDING ---------------- */}
+      <section className="cns-section" id="onboarding">
+        <div className="cns-wrap">
+          <div className="cns-kicker">Getting started</div>
+          <h2 className="cns-h2 cns-display">We build your knowledge base with you.</h2>
+          <p className="cns-section-sub">
+            No implementation fees. No setup fees. No mapping costs. Your drivers keep
+            doing what they've always done — we capture it as they go.
+          </p>
+
+          <div className="cns-onboard-grid">
+            {ONBOARD_STEPS.map((s, i) => (
+              <div className="cns-onboard-cell" key={i}>
+                <div className="cns-onboard-n cns-mono">{s.n}</div>
+                <div className="cns-onboard-title">{s.title}</div>
+                <div className="cns-onboard-body">{s.body}</div>
+              </div>
+            ))}
           </div>
+          <div className="cns-onboard-note">You subscribe. You start using it. That's the whole process.</div>
+        </div>
+      </section>
+
+      {/* ---------------- PROOF BANNER ---------------- */}
+      <section className="cns-section cns-section-alt">
+        <div className="cns-wrap">
+          <div className="cns-proof-banner">
+            <div>
+              <h3 className="cns-display">We'll prove it on your own routes.</h3>
+              <p>
+                We'll map one of your existing runs and hand it to a driver who's
+                never done it before. No special preparation, no chosen route —
+                just your customers, your streets, and CNS.
+              </p>
+            </div>
+            <a href="#cta" className="cns-btn cns-btn-dark">
+              Request a live demo <ArrowRight size={15} />
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------- FINAL CTA ---------------- */}
+      <section className="cns-section" id="cta">
+        <div className="cns-wrap">
+          <div className="cns-final">
+            <div className="cns-kicker" style={{ color: "var(--green-bright)" }}>Ready when you are</div>
+            <h2 className="cns-h2 cns-display">
+              Give every driver the experience of your best driver.
+            </h2>
+            <p>
+              Most logistics software manages deliveries. CNS manages the knowledge
+              behind them — so your business never loses it.
+            </p>
+            <div className="cns-final-ctas">
+              <a href="#" className="cns-btn cns-btn-primary">
+                Book a free trial <ArrowRight size={15} />
+              </a>
+              <a href="#" className="cns-btn cns-btn-ghost" style={{ borderColor: "rgba(255,255,255,0.3)", color: "#fff" }}>
+                Talk to our team
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------- FOOTER ---------------- */}
+      <footer className="cns-footer">
+        <div className="cns-wrap cns-footer-inner">
+          <span className="cns-footer-brand">CNS</span>
+          <span>Delivery knowledge, shared across every driver.</span>
+          <span>&copy; {new Date().getFullYear()} CNS. All rights reserved.</span>
         </div>
       </footer>
-
-      <button className={`ls-floating-cta ${showFloatingCta ? 'is-visible' : ''}`} onClick={goSignup}>
-        Start free trial <IconArrowRight size={14} />
-      </button>
-    </div>
-  );
-}
-
-/* ────────────────────────────────────────────────────────────────────────
-   Small pieces
-   ──────────────────────────────────────────────────────────────────── */
-function Magnetic({ children, strength = 16 }) {
-  const { ref, onMouseMove, onMouseLeave } = useMagnetic(strength);
-  return (
-    <span className="ls-magnetic" ref={ref} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}>
-      {children}
-    </span>
-  );
-}
-
-function FeatureCard({ Icon, title, body, delay }) {
-  const { ref, onMouseMove, onMouseLeave } = useTilt(5);
-  return (
-    <div className="ls-tilt ls-reveal" ref={ref} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave} style={{ transitionDelay: `${delay}s` }}>
-      <div className="ls-feature-card">
-        <div className="ls-feature-icon"><Icon /></div>
-        <h3>{title}</h3>
-        <p>{body}</p>
-      </div>
-    </div>
-  );
-}
-
-/**
- * A single driver's 200 reclaimed minutes reads as small next to a 9,600
- * minute month — which was the whole problem with the old bar chart. This
- * makes the same number land differently: multiply it across the person's
- * actual fleet size and show the combined hours and dollar value, which is
- * how the savings actually show up in practice. Self-contained state (like
- * RoiStat) so dragging the slider only re-renders this small component.
- */
-function RoiCalculator() {
-  const MINUTES_PER_DRIVER = 200;
-  const ASSUMED_HOURLY_RATE = 30; // stated explicitly in the footnote below
-
-  const [drivers, setDrivers] = useState(12);
-
-  const totalMinutes = drivers * MINUTES_PER_DRIVER;
-  const totalHours = totalMinutes / 60;
-  const monthlyValue = totalHours * ASSUMED_HOURLY_RATE;
-  const annualValue = monthlyValue * 12;
-
-  const formatUSD = (n) =>
-    n.toLocaleString(undefined, { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 });
-
-  const trackPercent = ((drivers - 1) / 99) * 100;
-
-  return (
-    <div className="ls-roi-calc">
-      <div className="ls-roi-calc-head">
-        <span className="ls-roi-calc-eyebrow">See it across your fleet</span>
-        <div className="ls-roi-calc-slider-row">
-          <input
-            type="range"
-            min="1"
-            max="100"
-            value={drivers}
-            onChange={(e) => setDrivers(Number(e.target.value))}
-            className="ls-roi-calc-slider"
-            style={{ '--fill': `${trackPercent}%` }}
-            aria-label="Number of drivers"
-          />
-          <span className="ls-roi-calc-count">
-            <strong>{drivers}</strong> driver{drivers === 1 ? '' : 's'}
-          </span>
-        </div>
-      </div>
-
-      <div className="ls-roi-calc-results">
-        <div className="ls-roi-calc-cell">
-          <span className="ls-roi-calc-value">{totalHours.toFixed(0)} hrs</span>
-          <span className="ls-roi-calc-label">reclaimed, every month</span>
-        </div>
-        <IconArrowRight className="ls-roi-calc-arrow" />
-        <div className="ls-roi-calc-cell ls-roi-calc-cell--highlight">
-          <span className="ls-roi-calc-value">{formatUSD(monthlyValue)}</span>
-          <span className="ls-roi-calc-label">value returned, monthly</span>
-        </div>
-        <IconArrowRight className="ls-roi-calc-arrow" />
-        <div className="ls-roi-calc-cell">
-          <span className="ls-roi-calc-value">{formatUSD(annualValue)}</span>
-          <span className="ls-roi-calc-label">projected, per year</span>
-        </div>
-      </div>
-
-      <p className="ls-roi-calc-footnote">
-        Based on ~200 minutes reclaimed per driver monthly and an average driver wage of A${ASSUMED_HOURLY_RATE}/hr —
-        and that's before counting the training costs CNS removes entirely.
-      </p>
-    </div>
-  );
-}
-
-
-/**
- * Self-contained stat: owns its own count-up animation and its own
- * IntersectionObserver via useCountUp. Keeping the animation state local to
- * this component (rather than lifted into LandingScreen, as it was before)
- * means each 60fps tick only re-renders this small stat — not the entire
- * marketing page — which is what makes the count feel smooth instead of
- * stuttering while the rest of the page is also animating.
- */
-function RoiStat({ icon, target, decimals = 0, duration = 1300, suffix = '', prefix = '', label }) {
-  const [ref, value] = useCountUp(target, { duration, decimals });
-  const display = decimals > 0 ? value.toFixed(decimals) : value;
-  return (
-    <div className="ls-roi-stat" ref={ref}>
-      <span className="ls-roi-stat-icon">{icon}</span>
-      <div className="ls-roi-stat-text">
-        <span className="ls-roi-stat-value">{prefix}{display}{suffix}</span>
-        <span className="ls-roi-stat-label">{label}</span>
-      </div>
     </div>
   );
 }
