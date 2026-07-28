@@ -603,31 +603,57 @@ function FeatureCard({ Icon, title, body, delay }) {
 }
 
 function RoiBar({ label, value, widthTarget, variant, sub }) {
-  const ref = useRef(null);
+  // Two refs on purpose: the fill span starts at width:0, and an
+  // IntersectionObserver watching a zero-area element never reliably
+  // crosses a visibility threshold (its intersection ratio has nothing to
+  // divide by) — that's why the bars weren't filling at all. Watching the
+  // *track* instead (which always has real width/height) and animating the
+  // fill inside it separately fixes that for good.
+  const trackRef = useRef(null);
+  const fillRef = useRef(null);
+
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
+    const track = trackRef.current;
+    const fill = fillRef.current;
+    if (!track || !fill) return;
+
+    let done = false;
+    const runFill = () => {
+      if (done) return;
+      done = true;
+      requestAnimationFrame(() => { fill.style.width = `${widthTarget}%`; });
+    };
+
+    if (typeof IntersectionObserver === 'undefined') {
+      // No IO support — just fill it rather than leaving it stuck at 0.
+      runFill();
+      return;
+    }
+
     const io = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
-          // rAF so the width change lands on its own paint frame — starting
-          // the CSS transition cleanly instead of racing the observer's
-          // callback, which is what caused the occasional "jump" instead of
-          // a smooth fill from 0.
-          requestAnimationFrame(() => { el.style.width = `${widthTarget}%`; });
-          io.unobserve(el);
+          runFill();
+          io.unobserve(track);
         }
       });
-    }, { threshold: 0.35 });
-    io.observe(el);
-    return () => io.disconnect();
+    }, { threshold: 0.2 });
+    io.observe(track);
+
+    // Safety net: if for any reason the observer never fires (e.g. the
+    // panel is already fully in view before the observer attaches on some
+    // browsers), fill it anyway after a short delay instead of leaving an
+    // empty bar forever.
+    const fallback = window.setTimeout(runFill, 900);
+
+    return () => { io.disconnect(); window.clearTimeout(fallback); };
   }, [widthTarget]);
 
   return (
     <div className="ls-roi-bar-row">
       <span className="ls-roi-bar-label">{label}</span>
-      <span className="ls-roi-bar-track">
-        <span ref={ref} className={`ls-roi-bar-fill ls-roi-bar-fill--${variant}`} />
+      <span className="ls-roi-bar-track" ref={trackRef}>
+        <span ref={fillRef} className={`ls-roi-bar-fill ls-roi-bar-fill--${variant}`} />
       </span>
       <span className="ls-roi-bar-value">{value}<br />{sub}</span>
     </div>
