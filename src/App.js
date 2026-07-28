@@ -114,6 +114,8 @@ function getInitialTabFromHash() {
 function getInitialPublicViewFromHash() {
   const hash = window.location.hash;
   if (hash.startsWith("#/login") || hash.startsWith("#/signup")) return "auth";
+  if (hash.startsWith("#/terms")) return "terms";
+  if (hash.startsWith("#/privacy")) return "privacy";
   return "landing";
 }
 
@@ -143,6 +145,11 @@ function AppInner() {
     setPublicView("auth");
   };
   const goToLandingHome = () => setPublicView("landing");
+  // Terms/Privacy reached from the marketing footer, before anyone's signed
+  // in — distinct from handleTermsPress/handlePrivacyPress below, which
+  // drive the same pages from inside the logged-in app's `tab` state.
+  const goToPublicTerms = () => setPublicView("terms");
+  const goToPublicPrivacy = () => setPublicView("privacy");
 
   // ── bfcache recovery ──────────────────────────────────────────────────────
   // Stripe Checkout is a full page navigation away (window.location.href),
@@ -185,9 +192,10 @@ function AppInner() {
   useEffect(() => {
     if (isLoading) return;
 
-    // Signed-out visitors: only the landing <-> auth back-level applies.
+    // Signed-out visitors: landing is the root; auth/terms/privacy are all
+    // one level away from it.
     if (!user) {
-      const isAway = publicView === "auth";
+      const isAway = publicView !== "landing";
       if (isAway && !awayFromPublicRootPushedRef.current) {
         awayFromPublicRootPushedRef.current = true;
         pushBackLevel(() => {
@@ -517,16 +525,21 @@ function AppInner() {
   // Marketing home first; Login / Sign up in its navbar hand off to the auth
   // form below. Direct #/login or #/signup links skip straight to it.
   if (!user) {
-    return publicView === "auth"
-      ? <AuthScreen onBackToHome={goToLandingHome} />
-      : (
-        <LandingScreen
-          onLoginClick={goToLogin}
-          onSignupClick={goToSignup}
-          onTermsPress={handleTermsPress}
-          onPrivacyPress={handlePrivacyPress}
-        />
-      );
+    if (publicView === "auth") return <AuthScreen onBackToHome={goToLandingHome} />;
+    if (publicView === "terms") {
+      return <TermsScreen onBack={() => { clearShareHash(); setPublicView("landing"); }} />;
+    }
+    if (publicView === "privacy") {
+      return <PrivacyScreen onBack={() => { clearShareHash(); setPublicView("landing"); }} />;
+    }
+    return (
+      <LandingScreen
+        onLoginClick={goToLogin}
+        onSignupClick={goToSignup}
+        onTermsPress={goToPublicTerms}
+        onPrivacyPress={goToPublicPrivacy}
+      />
+    );
   }
 
   // ── Guest (share-link) sessions get a locked-down experience: only their
