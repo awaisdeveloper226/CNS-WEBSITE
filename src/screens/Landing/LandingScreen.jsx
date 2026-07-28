@@ -107,8 +107,15 @@ function useScrollReveal(rootRef) {
   }, [rootRef]);
 }
 
-/** Animates a number from 0 → target the first time the element scrolls into view. */
-function useCountUp(target, { duration = 1200, decimals = 0 } = {}) {
+/**
+ * Animates a number from 0 → target the first time the element scrolls into
+ * view. Self-contained: the ref returned here should be attached directly to
+ * the element you want observed, and the hook owns its own state — so the
+ * per-frame updates only re-render the small component that calls this hook,
+ * never the whole page. That's what keeps the count-up feeling smooth instead
+ * of janky on a page with a lot of other animated elements around it.
+ */
+function useCountUp(target, { duration = 1300, decimals = 0, threshold = 0.35 } = {}) {
   const ref = useRef(null);
   const [value, setValue] = useState(0);
 
@@ -116,26 +123,31 @@ function useCountUp(target, { duration = 1200, decimals = 0 } = {}) {
     const el = ref.current;
     if (!el) return;
     let raf;
+    let cancelled = false;
     const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (!entry.isIntersecting) return;
+          if (!entry.isIntersecting || cancelled) return;
           const start = performance.now();
           const tick = (now) => {
             const t = Math.min(1, (now - start) / duration);
-            const eased = 1 - Math.pow(1 - t, 3);
+            // Quintic ease-out — a soft, gradual landing rather than an
+            // abrupt stop, which reads as calmer for a "counting up" number.
+            const eased = 1 - Math.pow(1 - t, 5);
             setValue(Number((target * eased).toFixed(decimals)));
-            if (t < 1) raf = requestAnimationFrame(tick);
+            if (t < 1) {
+              raf = requestAnimationFrame(tick);
+            }
           };
           raf = requestAnimationFrame(tick);
           io.unobserve(el);
         });
       },
-      { threshold: 0.4 }
+      { threshold }
     );
     io.observe(el);
-    return () => { io.disconnect(); if (raf) cancelAnimationFrame(raf); };
-  }, [target, duration, decimals]);
+    return () => { cancelled = true; io.disconnect(); if (raf) cancelAnimationFrame(raf); };
+  }, [target, duration, decimals, threshold]);
 
   return [ref, value];
 }
@@ -267,7 +279,7 @@ const FLOATERS = [
 /* ────────────────────────────────────────────────────────────────────────
    Page
    ──────────────────────────────────────────────────────────────────── */
-export default function LandingScreen() {
+export default function LandingScreen({ onLoginClick, onSignupClick, onTermsPress, onPrivacyPress }) {
   const rootRef = useRef(null);
   const heroRef = useRef(null);
   const [scrolled, setScrolled] = useState(false);
@@ -297,14 +309,22 @@ export default function LandingScreen() {
     el.style.setProperty('--my', `${(((e.clientY - rect.top) / rect.height) * 100).toFixed(1)}%`);
   }, []);
 
-  const [minutesRef, minutesVal] = useCountUp(200, { duration: 1100 });
-  const [hoursRef, hoursVal] = useCountUp(3, { duration: 900 });
-  const [roiRef, roiVal] = useCountUp(10, { duration: 1300 });
-
   const scrollTo = (id) => (e) => {
     if (e && e.preventDefault) e.preventDefault();
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+
+  // "Start free trial" always means one thing: get the visitor onto the
+  // sign-up screen. Falls back to scrolling to the on-page trial pitch if no
+  // handler was passed in, so the button never silently does nothing.
+  const goSignup = withRipple(() => {
+    if (onSignupClick) onSignupClick();
+    else scrollTo('trial')();
+  });
+
+  const goLogin = withRipple(() => {
+    if (onLoginClick) onLoginClick();
+  });
 
   return (
     <div className="ls-root" ref={rootRef}>
@@ -325,10 +345,10 @@ export default function LandingScreen() {
             <button className="ls-nav-link" onClick={scrollTo('pricing')}>Pricing</button>
           </div>
           <div className="ls-nav-actions">
-            <button className="ls-btn-ghost" onClick={withRipple(scrollTo('contact'))}>Talk to us</button>
+            {onLoginClick && <button className="ls-btn-ghost" onClick={goLogin}>Log in</button>}
             <Magnetic>
               <span className="ls-cta-pulse">
-                <button className="ls-btn-primary" onClick={withRipple(scrollTo('trial'))}>Start free trial</button>
+                <button className="ls-btn-primary" onClick={goSignup}>Start free trial</button>
               </span>
             </Magnetic>
           </div>
@@ -360,7 +380,7 @@ export default function LandingScreen() {
           <div className="ls-hero-actions ls-reveal" style={{ transitionDelay: '0.24s' }}>
             <Magnetic strength={20}>
               <span className="ls-cta-pulse">
-                <button className="ls-btn-primary ls-btn-large" onClick={withRipple(scrollTo('trial'))}>
+                <button className="ls-btn-primary ls-btn-large" onClick={goSignup}>
                   Start your free trial <IconArrowRight />
                 </button>
               </span>
@@ -405,7 +425,7 @@ export default function LandingScreen() {
             </p>
             <Magnetic>
               <span className="ls-cta-pulse">
-                <button className="ls-btn-primary" onClick={withRipple(scrollTo('contact'))}>Start my free trial <IconArrowRight /></button>
+                <button className="ls-btn-primary" onClick={goSignup}>Start my free trial <IconArrowRight /></button>
               </span>
             </Magnetic>
           </div>
@@ -471,12 +491,12 @@ export default function LandingScreen() {
         <div className="ls-roi-panel ls-reveal">
           <div className="ls-roi-bars">
             <RoiBar label="Monthly capacity" value="9,600 min / driver" widthTarget={100} variant="dark" sub="480 min/day × 5 days × 4 weeks" />
-            <RoiBar label="Time reclaimed" value="~200 min / driver" widthTarget={9} variant="route" sub="from shared knowledge alone" />
+            <RoiBar label="Time reclaimed" value="~200 min / driver" widthTarget={2.1} variant="route" sub="≈2.1% of monthly capacity" />
           </div>
           <div className="ls-roi-stats">
-            <RoiStat icon={<IconClock />} valueRef={minutesRef} value={minutesVal} suffix=" min" label="reclaimed per driver, every month" />
-            <RoiStat icon={<IconClockSm />} valueRef={hoursRef} value={hoursVal} suffix=" hrs" label="of driver time, back in the schedule" />
-            <RoiStat icon={<IconTrend />} valueRef={roiRef} value={roiVal} suffix="x" prefix="up to " label="return on investment" />
+            <RoiStat icon={<IconClock />} target={200} duration={1200} label="reclaimed per driver, every month" suffix=" min" />
+            <RoiStat icon={<IconClockSm />} target={3.3} decimals={1} duration={1300} label="of driver time, back in the schedule" suffix=" hrs" />
+            <RoiStat icon={<IconTrend />} target={10} duration={1450} label="return on investment" prefix="up to " suffix="x" />
           </div>
           <p className="ls-roi-footnote">
             A driver working an 8-hour day covers about 9,600 minutes a month. A shared knowledge network that keeps every
@@ -506,7 +526,7 @@ export default function LandingScreen() {
           </ul>
           <Magnetic>
             <span className="ls-cta-pulse" style={{ width: '100%' }}>
-              <button className="ls-btn-primary" onClick={withRipple(scrollTo('contact'))}>Start free trial <IconArrowRight /></button>
+              <button className="ls-btn-primary" onClick={goSignup}>Start free trial <IconArrowRight /></button>
             </span>
           </Magnetic>
           <p className="ls-pricing-fineprint">No credit card required to trial.</p>
@@ -522,11 +542,11 @@ export default function LandingScreen() {
           <div className="ls-contact-actions">
             <Magnetic>
               <span className="ls-cta-pulse">
-                <button className="ls-btn-primary ls-btn-large" onClick={withRipple()}>Start free trial <IconArrowRight /></button>
+                <button className="ls-btn-primary ls-btn-large" onClick={goSignup}>Start free trial <IconArrowRight /></button>
               </span>
             </Magnetic>
             <Magnetic strength={12}>
-              <button className="ls-btn-ghost ls-btn-large ls-btn-on-dark" onClick={withRipple()}>Talk to us</button>
+              <button className="ls-btn-ghost ls-btn-large ls-btn-on-dark" onClick={withRipple(scrollTo('trial'))}>Talk to us</button>
             </Magnetic>
           </div>
         </div>
@@ -543,14 +563,14 @@ export default function LandingScreen() {
             <p>Courier Navigator System — solving the last 100 metres.</p>
           </div>
           <div className="ls-footer-legal">
-            <button className="ls-footer-legal-link">Privacy</button>
+            <button className="ls-footer-legal-link" onClick={onPrivacyPress}>Privacy</button>
             <span className="ls-footer-dot" />
-            <button className="ls-footer-legal-link">Terms</button>
+            <button className="ls-footer-legal-link" onClick={onTermsPress}>Terms</button>
           </div>
         </div>
       </footer>
 
-      <button className={`ls-floating-cta ${showFloatingCta ? 'is-visible' : ''}`} onClick={withRipple(scrollTo('trial'))}>
+      <button className={`ls-floating-cta ${showFloatingCta ? 'is-visible' : ''}`} onClick={goSignup}>
         Start free trial <IconArrowRight size={14} />
       </button>
     </div>
@@ -590,11 +610,15 @@ function RoiBar({ label, value, widthTarget, variant, sub }) {
     const io = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
-          el.style.width = `${widthTarget}%`;
+          // rAF so the width change lands on its own paint frame — starting
+          // the CSS transition cleanly instead of racing the observer's
+          // callback, which is what caused the occasional "jump" instead of
+          // a smooth fill from 0.
+          requestAnimationFrame(() => { el.style.width = `${widthTarget}%`; });
           io.unobserve(el);
         }
       });
-    }, { threshold: 0.3 });
+    }, { threshold: 0.35 });
     io.observe(el);
     return () => io.disconnect();
   }, [widthTarget]);
@@ -610,12 +634,22 @@ function RoiBar({ label, value, widthTarget, variant, sub }) {
   );
 }
 
-function RoiStat({ icon, valueRef, value, suffix = '', prefix = '', label }) {
+/**
+ * Self-contained stat: owns its own count-up animation and its own
+ * IntersectionObserver via useCountUp. Keeping the animation state local to
+ * this component (rather than lifted into LandingScreen, as it was before)
+ * means each 60fps tick only re-renders this small stat — not the entire
+ * marketing page — which is what makes the count feel smooth instead of
+ * stuttering while the rest of the page is also animating.
+ */
+function RoiStat({ icon, target, decimals = 0, duration = 1300, suffix = '', prefix = '', label }) {
+  const [ref, value] = useCountUp(target, { duration, decimals });
+  const display = decimals > 0 ? value.toFixed(decimals) : value;
   return (
-    <div className="ls-roi-stat" ref={valueRef}>
+    <div className="ls-roi-stat" ref={ref}>
       <span className="ls-roi-stat-icon">{icon}</span>
       <div className="ls-roi-stat-text">
-        <span className="ls-roi-stat-value">{prefix}{value}{suffix}</span>
+        <span className="ls-roi-stat-value">{prefix}{display}{suffix}</span>
         <span className="ls-roi-stat-label">{label}</span>
       </div>
     </div>
