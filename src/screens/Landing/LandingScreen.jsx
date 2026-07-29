@@ -266,17 +266,6 @@ export default function LandingScreen({
                 {l.label}
               </a>
             ))}
-            <a className="nav-phone nav-phone-mobile" href="tel:+18005551234">
-              <Phone size={14} /> <span>(800) 555-1234</span>
-            </a>
-            <div className="nav-mobile-actions">
-              <button className="btn btn-ghost btn-sm" onClick={onLoginClick}>
-                Login
-              </button>
-              <button className="btn btn-sm btn-primary" onClick={onSignupClick}>
-                Book a demo
-              </button>
-            </div>
           </div>
         )}
       </nav>
