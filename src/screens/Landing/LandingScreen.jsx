@@ -233,7 +233,11 @@ export default function LandingScreen({
 
           <div className="nav-links" role="navigation" aria-label="Sections">
             {navLinks.map((l) => (
-              <a key={l.href} href={l.href} onClick={scrollToId(l.href.slice(1))}>
+              <a
+                key={l.href}
+                href={l.href}
+                onClick={scrollToId(l.href.slice(1))}
+              >
                 {l.label}
               </a>
             ))}
@@ -262,7 +266,11 @@ export default function LandingScreen({
         {navOpen && (
           <div className="nav-mobile">
             {navLinks.map((l) => (
-              <a key={l.href} href={l.href} onClick={scrollToId(l.href.slice(1))}>
+              <a
+                key={l.href}
+                href={l.href}
+                onClick={scrollToId(l.href.slice(1))}
+              >
                 {l.label}
               </a>
             ))}
@@ -299,7 +307,9 @@ export default function LandingScreen({
             <div className="hero-ctas">
               <button
                 className="btn btn-primary btn-lg"
-                onClick={onSignupClick}
+                onClick={() =>
+                  (window.location.href = "mailto:support@cnsroute.com")
+                }
               >
                 Book a demo <ArrowRight size={18} />
               </button>
@@ -722,7 +732,9 @@ export default function LandingScreen({
           <button
             className="btn btn-primary"
             style={{ marginTop: 16 }}
-            onClick={onSignupClick}
+            onClick={() =>
+              (window.location.href = "mailto:support@cnsroute.com")
+            }
           >
             Book a demo today <ArrowRight size={16} />
           </button>
