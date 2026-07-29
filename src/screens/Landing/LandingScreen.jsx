@@ -225,9 +225,7 @@ export default function LandingScreen({
         <div className="nav-top">
           <div className="nav-brand">
             <img src="/icon.png" alt="Logo" width={32} height={32} />
-            <span>
-              CNS
-            </span>
+            <span>CNS</span>
           </div>
 
           <div className="nav-links" role="navigation" aria-label="Sections">
@@ -289,7 +287,7 @@ export default function LandingScreen({
         <div className="hero-inner-split">
           <div className="hero-copy">
             <div className="hero-badge">
-              <Sparkles size={14} /> Every driver, instantly experienced
+              <Sparkles size={30} /> The Last 100 Metres of Every Delivery. Solved.
             </div>
             <h1>Every Driver. Every Customer. Every Time.</h1>
             <h2>Give every driver the experience of your entire fleet.</h2>
@@ -307,7 +305,8 @@ export default function LandingScreen({
               <button
                 className="btn btn-primary btn-lg"
                 onClick={() =>
-                  (window.location.href = "mailto:support@cnsroute.com")
+                  (window.location.href =
+                    "mailto:support@cnsroute.com?subject=Demo%20Request&body=Hi%20there%2C%20I%20would%20like%20to%20book%20a%20demo.%20Please%20let%20me%20know%20your%20availability.")
                 }
               >
                 Book a demo <ArrowRight size={18} />
@@ -339,7 +338,7 @@ export default function LandingScreen({
       <SectionBlock
         id="problem"
         eyebrow="The Problem"
-        title="Every time a driver has to ask, your business loses time."
+        title="Every time a driver has to stop and figure out where to deliver, your business loses time."
       >
         <ul>
           <IconRow icon={Phone}>Every phone call to dispatch.</IconRow>
@@ -607,10 +606,10 @@ export default function LandingScreen({
             </div>
           </div>
           <p className="roi-bar-caption">
-            CNS costs $9.99 per driver, per month. That means a driver only
-            needs to save approximately 20 minutes out of the 10,000 minutes
-            they work over an entire month for the software to pay for itself.
-            Everything after that is pure productivity and money saved.
+            CNS costs $9.99 per driver, per month. Out of the approximately
+            10,000 minutes a driver works each month, they only need to save
+            around 20 minutes for the software to pay for itself. Every minute
+            saved beyond that creates additional value for your business.
           </p>
         </div>
 
@@ -732,7 +731,8 @@ export default function LandingScreen({
             className="btn btn-primary"
             style={{ marginTop: 16 }}
             onClick={() =>
-              (window.location.href = "mailto:support@cnsroute.com")
+              (window.location.href =
+                "mailto:support@cnsroute.com?subject=Demo%20Request&body=Hi%20there%2C%20I%27d%20like%20to%20book%20a%20demo.%20Please%20let%20me%20know%20your%20availability.")
             }
           >
             Book a demo today <ArrowRight size={16} />
