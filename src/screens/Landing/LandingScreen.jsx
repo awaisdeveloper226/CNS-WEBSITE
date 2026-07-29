@@ -29,7 +29,7 @@ import "./LandingScreen.css";
 
 /* ---------- real photography (Unsplash, free license) ---------- */
 const IMG = {
-  hero: "/hero.jpg",
+  hero: "https://www.shutterstock.com/image-photo/ryder-truck-on-street-wilmington-260nw-2465376487.jpg",
   road: "https://images.unsplash.com/photo-1696330538770-165cab1f5313?auto=format&fit=crop&w=1400&q=80",
   warehouse:
     "https://images.unsplash.com/photo-1749244768351-2726dc23d26c?auto=format&fit=crop&w=1400&q=80",
@@ -659,12 +659,7 @@ export default function LandingScreen({
       <footer className="footer">
         <div className="footer-inner">
           <div className="footer-mark">
-            <img 
-  src="/icon.png" 
-  alt="Logo" 
-  width={90} 
-  height={80} 
-/>
+            <img src="/icon.png" alt="Logo" width={90} height={80} />
           </div>
           <h2>
             Most logistics software manages deliveries. CNS manages delivery
