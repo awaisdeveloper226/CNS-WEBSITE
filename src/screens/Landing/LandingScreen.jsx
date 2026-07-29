@@ -9,7 +9,6 @@ import {
   UserX,
   Frown,
   Store,
-  Truck,
   Package,
   Ban,
   CalendarDays,
@@ -139,7 +138,6 @@ export default function CNSLandingPage() {
           font-family: 'Inter', -apple-system, sans-serif;
           color: var(--ink);
           background: var(--paper);
-          overflow-x: hidden;
         }
         .cns * { box-sizing: border-box; }
         .cns h1, .cns h2, .cns h3 {
@@ -152,21 +150,31 @@ export default function CNSLandingPage() {
         .mono { font-family: 'JetBrains Mono', monospace; }
 
         /* ---------- nav ---------- */
+        /* Fixed dark glass bar at all times — text color never swaps on scroll,
+           only the backdrop opacity/blur deepens. This avoids any flash/disappear
+           issue that comes from cross-fading text color against a changing bg. */
         .nav {
           position: sticky; top: 0; z-index: 50;
           display: flex; align-items: center; justify-content: space-between;
-          padding: 14px 28px;
-          background: transparent;
-          transition: background 0.35s ease, box-shadow 0.35s ease, padding 0.35s ease;
+          gap: 20px;
+          padding: 16px 28px;
+          background: rgba(7,59,76,0.32);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          border-bottom: 1px solid rgba(255,255,255,0.08);
+          transition: background 0.35s ease, padding 0.35s ease, box-shadow 0.35s ease;
         }
         .nav.scrolled {
-          background: rgba(247,250,249,0.86);
-          backdrop-filter: blur(10px);
-          box-shadow: 0 1px 0 var(--line);
-          padding: 10px 28px;
+          background: rgba(6,42,54,0.82);
+          box-shadow: 0 10px 26px -16px rgba(0,0,0,0.45);
+          padding: 11px 28px;
         }
-        .nav-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.05rem; }
-        .nav-brand small { display:block; font-size: 0.62rem; font-weight: 600; letter-spacing: 0.14em; color: var(--ink-soft); text-transform: uppercase; }
+        .nav-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.05rem; color: #fff; flex-shrink: 0; }
+        .nav-brand small { display:block; font-size: 0.62rem; font-weight: 600; letter-spacing: 0.14em; color: rgba(255,255,255,0.72); text-transform: uppercase; }
+        .nav-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-left: auto; }
+        .btn-text { background: transparent; color: rgba(255,255,255,0.9); padding: 9px 14px; }
+        .btn-text:hover { color: var(--orange-soft); transform: none; }
+        @media (max-width: 520px) { .btn-text { display: none; } }
         .btn {
           border: none; cursor: pointer; font-family: inherit; font-weight: 600;
           border-radius: 999px; padding: 12px 24px; font-size: 0.92rem;
@@ -181,56 +189,118 @@ export default function CNSLandingPage() {
         .btn-ghost { background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,0.5); }
         .btn-ghost:hover { background: rgba(255,255,255,0.12); }
         .btn-sm { padding: 9px 18px; font-size: 0.82rem; }
+        .btn-lg { padding: 15px 32px; font-size: 1rem; }
 
         /* ---------- hero ---------- */
         .hero {
           position: relative;
-          padding: 60px 28px 120px;
+          min-height: 92vh;
+          display: flex; flex-direction: column; justify-content: center;
+          padding: 110px 28px 70px;
           background: linear-gradient(160deg, var(--teal-deep) 0%, var(--teal) 46%, var(--green-deep) 100%);
           background-size: 220% 220%;
           animation: heroShift 16s ease infinite;
           color: #fff;
           overflow: hidden;
-          border-radius: 0 0 40px 40px;
+          border-radius: 0 0 44px 44px;
         }
         @keyframes heroShift {
           0% { background-position: 0% 0%; }
           50% { background-position: 100% 60%; }
           100% { background-position: 0% 0%; }
         }
-        .hero-inner { max-width: 780px; margin: 60px auto 0; text-align: center; position: relative; z-index: 2; }
+
+        .hero-grid {
+          position: absolute; inset: 0; z-index: 0;
+          background-image: radial-gradient(rgba(255,255,255,0.14) 1.4px, transparent 1.4px);
+          background-size: 28px 28px;
+          -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 30%, transparent 78%);
+          mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 30%, transparent 78%);
+        }
+        .hero-orbs { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+        .orb { position: absolute; border-radius: 50%; filter: blur(70px); }
+        .orb-a { width: 380px; height: 380px; background: var(--teal-bright); opacity: 0.5; top: -120px; left: -100px; animation: floatA 13s ease-in-out infinite; }
+        .orb-b { width: 320px; height: 320px; background: var(--green); opacity: 0.45; bottom: -140px; right: 4%; animation: floatB 15s ease-in-out infinite; }
+        .orb-c { width: 220px; height: 220px; background: var(--orange); opacity: 0.35; top: 34%; right: -70px; animation: floatC 10s ease-in-out infinite; }
+        @keyframes floatA { 0%,100% { transform: translate(0,0); } 50% { transform: translate(40px, 30px); } }
+        @keyframes floatB { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-30px, -40px); } }
+        @keyframes floatC { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-24px, 26px); } }
+
+        .hero-inner-split {
+          position: relative; z-index: 2;
+          max-width: 1160px; margin: 0 auto; width: 100%;
+          display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 30px; align-items: center;
+        }
+        .hero-copy { text-align: left; }
         .hero-badge {
           display: inline-flex; align-items: center; gap: 8px;
           background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25);
           padding: 7px 16px; border-radius: 999px; font-size: 0.78rem; font-weight: 600;
-          letter-spacing: 0.04em; margin-bottom: 26px;
+          letter-spacing: 0.04em; margin-bottom: 24px;
         }
         .hero h1 {
-          font-size: clamp(2.1rem, 5vw, 3.6rem);
-          font-weight: 700; line-height: 1.08; margin-bottom: 18px;
+          font-size: clamp(2.1rem, 4.2vw, 3.3rem);
+          font-weight: 700; line-height: 1.08; margin-bottom: 16px;
         }
         .hero h2 {
           font-family: 'Inter', sans-serif; font-weight: 500;
-          font-size: clamp(1.05rem, 2vw, 1.3rem);
-          color: rgba(255,255,255,0.88); margin-bottom: 22px;
+          font-size: clamp(1.02rem, 1.8vw, 1.22rem);
+          color: rgba(255,255,255,0.88); margin-bottom: 20px;
         }
-        .hero p { color: rgba(255,255,255,0.78); max-width: 560px; margin: 0 auto 10px; }
-        .hero-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
+        .hero p { color: rgba(255,255,255,0.78); max-width: 520px; margin: 0 0 10px; }
+        .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 26px; }
 
-        /* animated road + truck ambient graphic */
-        .hero-road {
-          position: absolute; left: 0; right: 0; bottom: -10px; height: 220px;
-          opacity: 0.35; z-index: 1; pointer-events: none;
+        .hero-trust { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-top: 38px; }
+        .trust-item { display: flex; flex-direction: column; gap: 2px; }
+        .trust-num { font-size: 1.08rem; font-weight: 700; color: #fff; }
+        .trust-label { font-size: 0.7rem; color: rgba(255,255,255,0.65); }
+        .trust-divider { width: 1px; height: 30px; background: rgba(255,255,255,0.22); }
+
+        /* right-side floating knowledge visual */
+        .hero-visual { position: relative; height: 420px; display: block; }
+        .hero-orbit-road { position: absolute; inset: 0; animation: spin 44s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .hero-pin-glow {
+          position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+          filter: drop-shadow(0 0 46px rgba(23,175,200,0.6));
+          animation: floatPin 5s ease-in-out infinite;
         }
-        .hero-truck {
-          offset-path: path('M -40 150 C 200 60, 500 220, 760 90 S 1180 40, 1450 130');
-          offset-rotate: 0deg;
-          animation: driveRoute 11s linear infinite;
-          position: absolute; top: 0; left: 0;
+        @keyframes floatPin {
+          0%,100% { transform: translate(-50%,-50%) translateY(0); }
+          50% { transform: translate(-50%,-50%) translateY(-14px); }
         }
-        @keyframes driveRoute {
-          from { offset-distance: 0%; }
-          to { offset-distance: 100%; }
+        .knowledge-card {
+          position: absolute; background: rgba(255,255,255,0.97); color: var(--ink);
+          padding: 10px 14px; border-radius: 12px; font-size: 0.76rem; font-weight: 600;
+          display: flex; align-items: center; gap: 8px; max-width: 190px;
+          box-shadow: 0 16px 32px -14px rgba(7,59,76,0.55);
+          animation: cardFloat 6s ease-in-out infinite;
+        }
+        .knowledge-card svg { color: var(--teal); flex-shrink: 0; }
+        .card-1 { top: 2%; left: 0%; animation-delay: 0s; }
+        .card-2 { top: 26%; right: -2%; animation-delay: 1.3s; }
+        .card-3 { bottom: 20%; left: -4%; animation-delay: 2.4s; }
+        .card-4 { bottom: 0%; right: 6%; animation-delay: 0.7s; }
+        @keyframes cardFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+        .hero-scroll-cue {
+          position: relative; z-index: 2; margin: 46px auto 0;
+          width: 30px; height: 46px; border: 2px solid rgba(255,255,255,0.5); border-radius: 999px;
+          background: transparent; cursor: pointer; display: block;
+        }
+        .hero-scroll-cue span {
+          position: absolute; top: 8px; left: 50%; width: 4px; height: 8px;
+          background: #fff; border-radius: 2px; transform: translateX(-50%);
+          animation: scrollCue 1.6s ease infinite;
+        }
+        @keyframes scrollCue { 0% { opacity: 1; top: 8px; } 100% { opacity: 0; top: 24px; } }
+
+        @media (max-width: 960px) {
+          .hero-inner-split { grid-template-columns: 1fr; text-align: center; }
+          .hero-copy { text-align: center; }
+          .hero p { margin-left: auto; margin-right: auto; }
+          .hero-ctas, .hero-trust { justify-content: center; }
+          .hero-visual { display: none; }
         }
 
         /* ---------- section framework ---------- */
@@ -394,55 +464,89 @@ export default function CNSLandingPage() {
 
       {/* NAV */}
       <nav className={`nav ${scrolled ? "scrolled" : ""}`}>
-        <div className="nav-brand" style={{ color: scrolled ? "var(--ink)" : "#fff" }}>
+        <div className="nav-brand">
           <LogoMark size={32} />
           <span>
             CNS
             <small>Courier Navigator System</small>
           </span>
         </div>
-        <button className={`btn btn-sm ${scrolled ? "btn-primary" : "btn-ghost"}`}>
-          Book a Free Trial
-        </button>
+        <div className="nav-actions">
+          <button className="btn btn-text">Login</button>
+          <button className="btn btn-sm btn-primary">Sign Up</button>
+        </div>
       </nav>
 
       {/* HERO */}
       <header className="hero">
-        <svg className="hero-road" viewBox="0 0 1450 220" preserveAspectRatio="none">
-          <path
-            d="M -40 150 C 200 60, 500 220, 760 90 S 1180 40, 1450 130"
-            fill="none"
-            stroke="rgba(255,255,255,0.35)"
-            strokeWidth="3"
-            strokeDasharray="14 12"
-          />
-          <g className="hero-truck">
-            <Truck size={26} color="#fff" />
-          </g>
-        </svg>
+        <div className="hero-grid" aria-hidden="true" />
+        <div className="hero-orbs" aria-hidden="true">
+          <span className="orb orb-a" />
+          <span className="orb orb-b" />
+          <span className="orb orb-c" />
+        </div>
 
-        <div className="hero-inner">
-          <div className="hero-badge">
-            <Sparkles size={14} /> Every driver, instantly experienced
+        <div className="hero-inner-split">
+          <div className="hero-copy">
+            <div className="hero-badge">
+              <Sparkles size={14} /> Every driver, instantly experienced
+            </div>
+            <h1>Every Driver. Every Customer. Every Time.</h1>
+            <h2>Give every driver the experience of your entire fleet.</h2>
+            <p>
+              Every experienced driver builds valuable knowledge over years of deliveries — where
+              to go, how each customer prefers deliveries to be handled, and the fastest way to
+              get the job done.
+            </p>
+            <p>
+              CNS captures that knowledge and makes it instantly available to every driver,
+              reducing wasted time, simplifying operations, and delivering a more consistent
+              customer experience.
+            </p>
+            <div className="hero-ctas">
+              <button className="btn btn-primary btn-lg">
+                Book a Free Trial <ArrowRight size={18} />
+              </button>
+            </div>
+            <div className="hero-trust">
+              <div className="trust-item">
+                <span className="trust-num mono">$9.99</span>
+                <span className="trust-label">per driver / month</span>
+              </div>
+              <div className="trust-divider" />
+              <div className="trust-item">
+                <span className="trust-num mono">20 min</span>
+                <span className="trust-label">to break even</span>
+              </div>
+              <div className="trust-divider" />
+              <div className="trust-item">
+                <span className="trust-num mono">$0</span>
+                <span className="trust-label">setup or mapping fees</span>
+              </div>
+            </div>
           </div>
-          <h1>Every Driver. Every Customer. Every Time.</h1>
-          <h2>Give every driver the experience of your entire fleet.</h2>
-          <p>
-            Every experienced driver builds valuable knowledge over years of deliveries — where to
-            go, how each customer prefers deliveries to be handled, and the fastest way to get the
-            job done.
-          </p>
-          <p>
-            CNS captures that knowledge and makes it instantly available to every driver, reducing
-            wasted time, simplifying operations, and delivering a more consistent customer
-            experience.
-          </p>
-          <div className="hero-ctas">
-            <button className="btn btn-primary">
-              Book a Free Trial <ArrowRight size={16} />
-            </button>
+
+          <div className="hero-visual" aria-hidden="true">
+            <svg className="hero-orbit-road" viewBox="0 0 400 400">
+              <circle cx="200" cy="200" r="150" fill="none" stroke="rgba(255,255,255,0.28)" strokeDasharray="6 10" />
+            </svg>
+            <div className="hero-pin-glow">
+              <LogoMark size={116} />
+            </div>
+            <div className="knowledge-card card-1"><MapPin size={14} /> Rear loading dock, gate 3</div>
+            <div className="knowledge-card card-2"><Package size={14} /> Leave with concierge, ask for Sam</div>
+            <div className="knowledge-card card-3"><Ban size={14} /> Skip reception — too slow</div>
+            <div className="knowledge-card card-4"><Navigation size={14} /> Enter via loading bay, not front</div>
           </div>
         </div>
+
+        <button
+          className="hero-scroll-cue"
+          aria-label="Scroll to learn more"
+          onClick={() => document.getElementById("problem")?.scrollIntoView({ behavior: "smooth" })}
+        >
+          <span />
+        </button>
       </header>
 
       {/* THE PROBLEM */}
