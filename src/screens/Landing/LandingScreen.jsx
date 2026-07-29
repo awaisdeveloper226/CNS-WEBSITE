@@ -196,6 +196,8 @@ export default function LandingScreen({
   onPrivacyPress,
 }) {
   const [scrolled, setScrolled] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
+
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -203,25 +205,84 @@ export default function LandingScreen({
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  const navLinks = [
+    { href: "#problem", label: "The Problem" },
+    { href: "#shared", label: "How It Works" },
+    { href: "#training", label: "Onboarding" },
+    { href: "#roi", label: "Pricing & ROI" },
+    { href: "#proof", label: "Proof" },
+  ];
+
+  const scrollToId = (id) => (e) => {
+    e.preventDefault();
+    setNavOpen(false);
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  };
+
   return (
     <div className="cns">
       {/* NAV */}
       <nav className={`nav ${scrolled ? "scrolled" : ""}`}>
-        <div className="nav-brand">
-          <img src="/icon.png" alt="Logo" width={32} height={32} />
-          <span>
-            CNS
-            <small>Courier Navigator System</small>
-          </span>
+        <div className="nav-top">
+          <div className="nav-brand">
+            <img src="/icon.png" alt="Logo" width={32} height={32} />
+            <span>
+              CNS
+              <small>Courier Navigator System</small>
+            </span>
+          </div>
+
+          <div className="nav-links" role="navigation" aria-label="Sections">
+            {navLinks.map((l) => (
+              <a key={l.href} href={l.href} onClick={scrollToId(l.href.slice(1))}>
+                {l.label}
+              </a>
+            ))}
+          </div>
+
+          <div className="nav-actions">
+            <a className="nav-phone" href="tel:+18005551234">
+              <Phone size={14} /> <span>(800) 555-1234</span>
+            </a>
+            <button className="btn btn-text" onClick={onLoginClick}>
+              Login
+            </button>
+            <button className="btn btn-sm btn-primary" onClick={onSignupClick}>
+              Book a demo
+            </button>
+            <button
+              className="nav-burger"
+              aria-label="Toggle menu"
+              aria-expanded={navOpen}
+              onClick={() => setNavOpen((v) => !v)}
+            >
+              <span />
+              <span />
+              <span />
+            </button>
+          </div>
         </div>
-        <div className="nav-actions">
-          <button className="btn btn-text" onClick={onLoginClick}>
-            Login
-          </button>
-          <button className="btn btn-sm btn-primary" onClick={onSignupClick}>
-            Sign Up
-          </button>
-        </div>
+
+        {navOpen && (
+          <div className="nav-mobile">
+            {navLinks.map((l) => (
+              <a key={l.href} href={l.href} onClick={scrollToId(l.href.slice(1))}>
+                {l.label}
+              </a>
+            ))}
+            <a className="nav-phone nav-phone-mobile" href="tel:+18005551234">
+              <Phone size={14} /> <span>(800) 555-1234</span>
+            </a>
+            <div className="nav-mobile-actions">
+              <button className="btn btn-ghost btn-sm" onClick={onLoginClick}>
+                Login
+              </button>
+              <button className="btn btn-sm btn-primary" onClick={onSignupClick}>
+                Book a demo
+              </button>
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* HERO — single clean photo, no overlaid text */}
@@ -255,7 +316,7 @@ export default function LandingScreen({
                 className="btn btn-primary btn-lg"
                 onClick={onSignupClick}
               >
-                Book a Free Trial <ArrowRight size={18} />
+                Book a demo <ArrowRight size={18} />
               </button>
             </div>
           </div>
@@ -678,7 +739,7 @@ export default function LandingScreen({
             style={{ marginTop: 16 }}
             onClick={onSignupClick}
           >
-            Book a free demo today <ArrowRight size={16} />
+            Book a demo today <ArrowRight size={16} />
           </button>
 
           <nav className="footer-legal" aria-label="Legal">
