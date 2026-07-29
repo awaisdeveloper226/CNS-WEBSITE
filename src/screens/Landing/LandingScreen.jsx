@@ -227,7 +227,6 @@ export default function LandingScreen({
             <img src="/icon.png" alt="Logo" width={32} height={32} />
             <span>
               CNS
-              <small>Courier Navigator System</small>
             </span>
           </div>
 
@@ -749,7 +748,7 @@ export default function LandingScreen({
             </button>
           </nav>
 
-          <div className="footer-fine mono">CNS — Courier Navigator System</div>
+          <div className="footer-fine mono">CNS </div>
         </div>
       </footer>
     </div>
