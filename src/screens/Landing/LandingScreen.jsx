@@ -296,6 +296,7 @@ export default function CNSLandingPage() {
         @keyframes scrollCue { 0% { opacity: 1; top: 8px; } 100% { opacity: 0; top: 24px; } }
 
         @media (max-width: 960px) {
+          .hero { min-height: auto; padding-top: 90px; }
           .hero-inner-split { grid-template-columns: 1fr; text-align: center; }
           .hero-copy { text-align: center; }
           .hero p { margin-left: auto; margin-right: auto; }
@@ -453,8 +454,43 @@ export default function CNSLandingPage() {
           .sb-spine { display: none; }
           .grid-3 { grid-template-columns: 1fr; }
           .bubble, .bubble:nth-child(even) { max-width: 100%; margin-left: 0; }
+          .roi-stats { gap: 18px; }
+          .hero { border-radius: 0 0 26px 26px; padding-bottom: 56px; }
+        }
+
+        @media (max-width: 560px) {
+          .nav { padding: 12px 16px; gap: 8px; }
+          .nav.scrolled { padding: 10px 16px; }
+          .nav-brand small { display: none; }
+          .nav-brand { font-size: 0.95rem; gap: 8px; }
+          .btn-sm { padding: 8px 14px; font-size: 0.78rem; }
+        }
+
+        @media (max-width: 480px) {
+          .hero { padding: 68px 18px 44px; }
+          .hero-badge { font-size: 0.7rem; padding: 6px 12px; margin-bottom: 18px; }
+          .hero h1 { font-size: 1.85rem; }
+          .hero-trust { flex-direction: column; align-items: center; gap: 12px; margin-top: 28px; }
+          .trust-divider { display: none; }
+          .hero-scroll-cue { margin-top: 26px; }
+
+          .sb { padding: 44px 16px 44px 16px; }
+          .sb-title { font-size: 1.3rem; }
+          .eyebrow { font-size: 0.66rem; margin-bottom: 10px; }
+          .callout { padding: 14px 16px; font-size: 0.92rem; }
+          .lead { font-size: 1rem; }
+          .icon-row { font-size: 0.92rem; gap: 10px; }
+
+          .fee-card { padding: 18px 14px; }
+          .grid-3 { gap: 12px; }
+
+          .roi-num { font-size: 1.9rem; }
           .roi-stats { gap: 14px; }
-          .hero { border-radius: 0 0 26px 26px; padding-bottom: 90px; }
+          .roi-arrow { transform: rotate(90deg); }
+          .roi-bar { margin-top: 40px; }
+
+          .footer { padding: 60px 20px 44px; border-radius: 24px 24px 0 0; }
+          .footer h2 { font-size: 1.5rem; }
         }
 
         @media (prefers-reduced-motion: reduce) {
