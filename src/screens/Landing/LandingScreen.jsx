@@ -544,22 +544,7 @@ export default function CNSLandingPage() {
                 Book a Free Trial <ArrowRight size={18} />
               </button>
             </div>
-            <div className="hero-trust">
-              <div className="trust-item">
-                <span className="trust-num mono">$9.99</span>
-                <span className="trust-label">per driver / month</span>
-              </div>
-              <div className="trust-divider" />
-              <div className="trust-item">
-                <span className="trust-num mono">20 min</span>
-                <span className="trust-label">to break even</span>
-              </div>
-              <div className="trust-divider" />
-              <div className="trust-item">
-                <span className="trust-num mono">$0</span>
-                <span className="trust-label">setup or mapping fees</span>
-              </div>
-            </div>
+            
           </div>
 
           <div className="hero-visual" aria-hidden="true">
