@@ -206,7 +206,6 @@ export default function LandingScreen({
   }, []);
 
   const navLinks = [
-    { href: "#problem", label: "The Problem" },
     { href: "#shared", label: "How It Works" },
     { href: "#training", label: "Onboarding" },
     { href: "#roi", label: "Pricing & ROI" },
@@ -241,14 +240,11 @@ export default function LandingScreen({
           </div>
 
           <div className="nav-actions">
-            <a className="nav-phone" href="tel:+18005551234">
-              <Phone size={14} /> <span>(800) 555-1234</span>
-            </a>
             <button className="btn btn-text" onClick={onLoginClick}>
               Login
             </button>
             <button className="btn btn-sm btn-primary" onClick={onSignupClick}>
-              Book a demo
+              Sign up
             </button>
             <button
               className="nav-burger"
