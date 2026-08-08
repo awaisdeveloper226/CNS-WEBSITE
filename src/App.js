@@ -277,6 +277,18 @@ function AppInner() {
   // effect #2b only fires on an actual identity change — not on every
   // shareStatus/shareBusiness tick coming out of effect #2a.
   const prevUserIdRef = useRef(undefined);
+  // Tracks whether effect #2b has executed at least once. Its very first
+  // run (right after isLoading turns false) always looks like an "identity
+  // change" — prevUserIdRef starts as undefined, and currentUserId is
+  // whatever the freshly-loaded auth state happens to be (often null) — but
+  // it isn't a real login/logout transition, it's just establishing the
+  // baseline. Without this guard, that first run would unconditionally call
+  // setPublicView("landing"), stomping on any publicView value another
+  // effect (e.g. the #/payment-success handler below) had just set on the
+  // exact same mount — which is what caused the app to flash back to the
+  // marketing page immediately after returning from Stripe checkout / while
+  // on the "enter code, set password" screen.
+  const identityResetInitializedRef = useRef(false);
   const paymentReturnHandled = useRef(false);
 
   // 0) Detect a #/payment-success hash from Stripe Checkout returning here.
@@ -374,6 +386,12 @@ function AppInner() {
   //     so it no longer re-fires as a side effect of 2a completing. Still
   //     skips the reset while a share flow is actively resolving, so it
   //     doesn't stomp on a business that's about to be folded in.
+  //
+  //     The very first time this runs after isLoading settles is NOT a real
+  //     login/logout — it's just recording the starting user id — so it
+  //     must not perform the reset (in particular, must not force
+  //     publicView back to "landing"; see identityResetInitializedRef above
+  //     for why that matters).
   useEffect(() => {
     if (isLoading) return;
 
@@ -383,13 +401,18 @@ function AppInner() {
 
     if (shareStatus === "loading" || shareStatus === "ready") return;
 
+    if (!identityResetInitializedRef.current) {
+      identityResetInitializedRef.current = true;
+      return;
+    }
+
     setTab("home");
     setSelectedBusiness(null);
     setShowUploadFlow(false);
     setSelectedInstruction(null);
     setGuestShowExit(false);
-    // A logout (or a first load with nobody signed in) should land back on
-    // the marketing page, not mid-way through a stale auth form.
+    // A logout should land back on the marketing page, not mid-way through
+    // a stale auth form.
     if (!currentUserId) setPublicView("landing");
   }, [user, isLoading, shareStatus]);
 
