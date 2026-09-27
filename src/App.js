@@ -20,6 +20,21 @@ import PrivacyScreen from "./screens/Legal/(privacy)/PrivacyScreen";
 // Warm up the backend
 fetch(`${API_ENDPOINTS.BUSINESSES}?skip=0&limit=1`).catch(() => {});
 
+// ── AI chat widget (Zander) ───────────────────────────────────────────────
+// Injected once at module load, same pattern as the backend warm-up above,
+// so the floating chat icon shows up on every screen (landing, home, guest
+// share view, etc.) without needing to touch index.html or any individual
+// screen component. Guarded by id so React StrictMode's double-invoke in
+// dev, or any re-import, never results in two widgets/scripts.
+if (typeof document !== "undefined" && !document.getElementById("zander-ai-widget")) {
+  const zanderScript = document.createElement("script");
+  zanderScript.id = "zander-ai-widget";
+  zanderScript.src = "https://cdn.zanderio.ai/widget/loader.js";
+  zanderScript.setAttribute("data-id", "wdg_q3B6iWm5EMlAps1kLUOiEF5Y");
+  zanderScript.defer = true;
+  document.body.appendChild(zanderScript);
+}
+
 // ── Share-flow sessionStorage keys ────────────────────────────────────────────
 // Kept separate from the URL hash on purpose: the hash is the primary source,
 // but if anything clears/loses it (a redirect, a reload, another part of the
